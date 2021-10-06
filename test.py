@@ -82,8 +82,9 @@ high_mask = torch.zeros([B, n_cells], dtype = torch.int64).cuda()
 
 # state embedding
 model = HCPP(n_feature = 2, n_hidden= n_hidden, high_level= True, n_embedding= n_hidden, seq_len= n_cells, C = 10).cuda()
-h_log_prob, h_action = model(X, high_mask = high_mask, low_mask = low_mask)
-# h_log_prob = [batch, n_cells], h_action = [batch, n_cells]
+log_prob, reward = model(X, high_mask = high_mask, low_mask = low_mask)
+
+
 
 
 
