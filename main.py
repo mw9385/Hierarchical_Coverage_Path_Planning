@@ -22,14 +22,15 @@ print("Device status:{}".format(device))
 parser = argparse.ArgumentParser(description="CPP with RL")
 parser.add_argument('--size', default=145, help="number of nodes")
 parser.add_argument('--epoch', default= 10, help="number of epochs")
-parser.add_argument('--steps', default= 100, help="number of epochs")
-parser.add_argument('--batch_size', default= 32, help="number of batch size")
+parser.add_argument('--steps', default= 500, help="number of epochs")
+parser.add_argument('--batch_size', default=64, help="number of batch size")
 parser.add_argument('--val_size', default=100, help="number of validation samples") # 이게 굳이 필요한가?
 parser.add_argument('--lr', type=float, default=1e-3, help="learning rate")
 parser.add_argument('--n_cells', default=10, help='number of visiting cells')
 parser.add_argument('--max_distance', default=1, help="maximum distance of nodes from the center of cell")
 parser.add_argument('--n_hidden', default=128, help="nuber of hidden nodes")
 parser.add_argument('--log_interval', default= 1, help="store model at every epoch")
+parser.add_argument('--eval_interval', default= 50, help='update frequency')
 args = vars(parser.parse_args())
 
 size = int(args['size'])
@@ -42,13 +43,14 @@ n_cells = int(args['n_cells'])
 n_hidden = int(args['n_hidden'])
 max_distance = int(args['max_distance'])
 log_interval = int(args['log_interval'])
+eval_interval = int(args['eval_interval'])
 
 # print parameters
 pp.pprint(args)
 
 # generate training data
-n_train_samples = 50000
-n_val_samples = 10000
+n_train_samples = 30000
+n_val_samples = 5000
 print("---------------------------------------------")
 print("GENERATE DATA")
 train_tsp_generator = TSP(n_batch=n_train_samples, n_cells = n_cells, size = size, max_distance = max_distance, is_train= True)
@@ -98,19 +100,21 @@ if __name__=="__main__":
     print("FINISHED")
     # clear cache
     torch.cuda.empty_cache()
-
+    
+    # variable for evaluation
+    global_step = 0
     print("---------------------------------------------")
     print("START TRAINING")
     model.train()
     for epoch in range(n_epoch):        
-        for step in tqdm(range(steps)):
+        for step in tqdm(range(steps)):    
             # define state embedding layer
             batch_index = np.random.permutation(n_train_samples)
             batch_index = batch_index[:B]
             # train data            
             X = [X_train[i] for i in batch_index]
 
-            # -----------------------------------------------------#
+            # ----------------------------------------------------------------------------------------------------------#
             # create a mask
             low_mask = [] # low_policy_mask
             for sub_x in X:    
@@ -122,7 +126,7 @@ if __name__=="__main__":
                 low_mask.append(f_mask)
             # high policy mask
             high_mask = torch.zeros([B, n_cells], dtype = torch.int64).cuda()
-            # -----------------------------------------------------#
+            # ----------------------------------------------------------------------------------------------------------#
 
             log_prob, reward = model(X, high_mask = high_mask, low_mask = low_mask)  
 
@@ -137,6 +141,36 @@ if __name__=="__main__":
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm, norm_type= 2)
             optimizer.step()
             opt_scheduler.step()
+            
+            # model evaluation
+            if global_step !=0 and global_step % eval_interval == 0:
+                print("MODEL EVALUATION")                              
+                # generate test valid index
+                test_batch_index = np.random.permutation(n_val_samples)
+                test_batch_index = test_batch_index[:B]
+                
+                # get test data from test batch
+                test_X = [X_val[i] for i in test_batch_index]
+
+                # ----------------------------------------------------------------------------------------------------------#
+                # create a mask for test
+                test_low_mask = [] # low_policy_mask
+                for sub_x in test_X:    
+                    f_mask = []
+                    for subsub_x in sub_x:        
+                        num_cities = subsub_x.size(0)
+                        _mask = torch.zeros((num_cities), dtype = torch.int64).cuda()
+                        f_mask.append(_mask)
+                    test_low_mask.append(f_mask)
+                # high policy mask
+                test_high_mask = torch.zeros([B, n_cells], dtype = torch.int64).cuda()
+                # ----------------------------------------------------------------------------------------------------------#
+                # evaluate the performance 
+                _, test_reward = model(test_X, high_mask = test_high_mask, low_mask = test_low_mask)  
+                test_reward = test_reward / B
+                print("TEST REWARD of {}th step:{}".format(global_step, test_reward))
+                writer.add_scalar("Test reward", test_reward, global_step= global_step)                
+            global_step +=1
 
         # tensorboard 설정 
         if epoch % log_interval == 0:
@@ -158,10 +192,9 @@ if __name__=="__main__":
             }, config_path)
 
             # write information in tensorboard            
-            writer.add_scalar("loss", loss, global_step=epoch)
-            writer.add_scalar("distance", reward, global_step= epoch)
-                        
-                # model evaluation 설정
+            writer.add_scalar("loss", loss, global_step= global_step)
+            writer.add_scalar("distance", reward, global_step= global_step)
+                                        
     writer.close()   
 
 
