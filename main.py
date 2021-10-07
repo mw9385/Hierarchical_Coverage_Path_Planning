@@ -23,13 +23,13 @@ parser = argparse.ArgumentParser(description="CPP with RL")
 parser.add_argument('--size', default=145, help="number of nodes")
 parser.add_argument('--epoch', default= 10, help="number of epochs")
 parser.add_argument('--steps', default= 500, help="number of epochs")
-parser.add_argument('--batch_size', default=64, help="number of batch size")
+parser.add_argument('--batch_size', default=32, help="number of batch size")
 parser.add_argument('--val_size', default=100, help="number of validation samples") # 이게 굳이 필요한가?
 parser.add_argument('--lr', type=float, default=1e-3, help="learning rate")
 parser.add_argument('--n_cells', default=10, help='number of visiting cells')
 parser.add_argument('--max_distance', default=1, help="maximum distance of nodes from the center of cell")
 parser.add_argument('--n_hidden', default=128, help="nuber of hidden nodes")
-parser.add_argument('--log_interval', default= 1, help="store model at every epoch")
+parser.add_argument('--log_interval', default= 5, help="store model at every epoch")
 parser.add_argument('--eval_interval', default= 50, help='update frequency')
 args = vars(parser.parse_args())
 
@@ -49,8 +49,8 @@ eval_interval = int(args['eval_interval'])
 pp.pprint(args)
 
 # generate training data
-n_train_samples = 30000
-n_val_samples = 5000
+n_train_samples = 1000
+n_val_samples = 500
 print("---------------------------------------------")
 print("GENERATE DATA")
 train_tsp_generator = TSP(n_batch=n_train_samples, n_cells = n_cells, size = size, max_distance = max_distance, is_train= True)
@@ -169,32 +169,32 @@ if __name__=="__main__":
                 _, test_reward = model(test_X, high_mask = test_high_mask, low_mask = test_low_mask)  
                 test_reward = test_reward / B
                 print("TEST REWARD of {}th step:{}".format(global_step, test_reward))
-                writer.add_scalar("Test reward", test_reward, global_step= global_step)                
+                writer.add_scalar("Test reward", test_reward, global_step= global_step)                            
+
+            # tensorboard 설정 
+            if step % log_interval == 0:
+                print("SAVE MODEL")
+                dir_root = './model/HCPP'
+                file_name = "HCPP_V1"
+                param_path = dir_root +  "/" + file_name + ".param"
+                config_path = dir_root + "/" + file_name + '.config'
+
+                # make model directory if is not exist
+                os.makedirs(dir_root, exist_ok=True)
+                            
+                torch.save({
+                    'epoch': epoch,
+                    'model_state_dict': model.state_dict(),
+                    'optimizer_state_dict': optimizer.state_dict(),
+                    'loss': loss,
+                    'reward': reward
+                }, config_path)
+
+                # write information in tensorboard            
+                writer.add_scalar("loss", loss, global_step= global_step)
+                writer.add_scalar("distance", reward, global_step= global_step)
             global_step +=1
-
-        # tensorboard 설정 
-        if epoch % log_interval == 0:
-            print("SAVE MODEL")
-            dir_root = './model/HCPP'
-            file_name = "HCPP_V1"
-            param_path = dir_root +  "/" + file_name + ".param"
-            config_path = dir_root + "/" + file_name + '.config'
-
-            # make model directory if is not exist
-            os.makedirs(dir_root, exist_ok=True)
-                        
-            torch.save({
-                'epoch': epoch,
-                'model_state_dict': model.state_dict(),
-                'optimizer_state_dict': optimizer.state_dict(),
-                'loss': loss,
-                'reward': reward
-            }, config_path)
-
-            # write information in tensorboard            
-            writer.add_scalar("loss", loss, global_step= global_step)
-            writer.add_scalar("distance", reward, global_step= global_step)
-                                        
+            
     writer.close()   
 
 
