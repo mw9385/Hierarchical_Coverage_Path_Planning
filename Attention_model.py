@@ -1,5 +1,3 @@
-import copy
-import numpy as np
 import torch
 import torch.nn as nn
 from Environment import Environment
@@ -9,34 +7,32 @@ from torch.distributions import Categorical
 
 class Encoder(torch.nn.Module):
     def __init__(self, n_feature, n_hidden, high_level):
-        super(Encoder, self).__init__()
-        cp = lambda x: copy.deepcopy(x)
+        super(Encoder, self).__init__()        
 
         self.embedding_x = nn.Linear(n_feature, n_hidden)
         self.high_level = high_level
         self.multi_head_attention = MultiHeadAttentionLayer(
-                                            d_model= n_hidden,
-                                            n_head = 8,
-                                            qkv_fc_layer= nn.Linear(n_hidden, n_hidden),
-                                            fc_layer = nn.Linear(n_hidden, n_hidden))
-        self.low_attention = cp(self.multi_head_attention)
-        self.high_attention = cp(self.multi_head_attention)        
+                                            n_hidden= n_hidden,
+                                            n_head = 8)
+        self.low_attention = MultiHeadAttentionLayer(
+                                            n_hidden= n_hidden,
+                                            n_head = 8)
+        self.high_attention = MultiHeadAttentionLayer(
+                                            n_hidden= n_hidden,
+                                            n_head = 8)
 
     def forward(self, batch_data, mask = None):
-        self.batch_data = batch_data        
-        self.low_node = []
-        self.embedded_x = torch.tensor(())
-        for batch_samples in self.batch_data:
-            _x = torch.tensor(())
+        self.batch_data = batch_data
+        self.low_node = []        
+        for batch_samples in self.batch_data:            
             _low_node = []
             for sample in batch_samples:
-                x = self.embedding_x(sample.cuda()).unsqueeze(0)
+                x = self.embedding_x(sample.clone().cuda()).unsqueeze(0) # x_size = [1, num_nodes, n_hidden]                
                 _low_node.append(self.low_attention(query = x, key = x, value = x, mask = None))                
             self.low_node.append(_low_node)                                
         
         # cell embedding
-        self.high_node = self.cell_embedding(mask = None)
-
+        self.high_node = self.cell_embedding(mask = None) # high_node_size = [batch, n_cell, n_hidden]        
         return self.low_node, self.high_node, self.batch_data
 
     def cell_embedding(self, mask = None):
@@ -64,29 +60,28 @@ class Decoder(torch.nn.Module):
         self.init_w.data.uniform_(-1,1)        
         self.h_context_embed = nn.Linear(self.n_embedding, self.n_embedding)
         self.v_weight_embed = nn.Linear(2 * self.n_embedding, self.n_embedding)
-
-        self.init_h = None
-        self.h = None
+        
         # define low policy decoder
         self.low_decoder = Low_Decoder(n_embedding = self.n_embedding, n_hidden= self.n_hidden, C = 10)
 
-    def forward(self, node_context, original_data, cell_context, high_mask, low_mask):
-        self.cell_context = cell_context
+    def forward(self, node_context, original_data, cell_context, high_mask, low_mask):        
         self.original_data = original_data
         self.batch_size = cell_context.size(0)        
         
+        init_h = None
+        h = None
+
         # calculate query
-        h_mean = self.calculate_context(context_vector= self.cell_context) # batch * 1 * embedding_size
+        h_mean = self.calculate_context(context_vector= cell_context) # batch * 1 * embedding_size
         h_bar = self.h_context_embed(h_mean) # batch * 1 * embedding_size
         h_rest = self.v_weight_embed(self.init_w) # 1 * embedding_size
         query = h_bar + h_rest # kool 논문에서는 concatenate 한다고 나와있지만 실제로는 아님...?
 
         # mask = [batch, n_cities]
         # query = [batch, embedding_size]        
-        temp_log_idx = []
 
         # set the high environment
-        self.high_environment = Environment(batch_data= self.cell_context, is_local= False)    
+        self.high_environment = Environment(batch_data= cell_context, is_local= False)    
         high_mask[:, 0] = 1   # n_cell의 가장 첫번째 부분만 1로 masking 작업 진행 // size: [batch, n_cells]
         
         # initialize node
@@ -95,7 +90,8 @@ class Decoder(torch.nn.Module):
         cell_log_prob = 0
         for i in range(self.seq_len):                                         
             # we could add glimpse later                                
-            prob = self.high_pointer(query=query, target=self.cell_context, mask = high_mask)               
+            prob = self.high_pointer(query=query, target=cell_context, mask = high_mask)                   
+
             if not torch.isnan(prob)[0][0]:
                 node_distribtution = Categorical(prob)
                 idx = node_distribtution.sample() # idx size = [batch]                
@@ -114,12 +110,12 @@ class Decoder(torch.nn.Module):
                 local_log_prob = 0
                 for id, (sub_node, sub_original_node, sub_mask) in enumerate(zip(node_context, self.original_data, low_mask)):                    
                     # get cell index
-                    low_index = idx.gather(0, torch.tensor(id).cuda())           
+                    low_index = idx.gather(0, torch.tensor(id).cuda())
 
                     # get current node state
-                    current_cell = sub_node[low_index]
-                    original_cell = sub_original_node[low_index]
-                    current_mask = sub_mask[low_index]    
+                    current_cell = sub_node[low_index].clone()
+                    original_cell = sub_original_node[low_index].clone()
+                    current_mask = sub_mask[low_index].clone()
 
                     # calculate low_log_prob and low_action
                     # init_node, last_node are nodes at current time step
@@ -147,11 +143,11 @@ class Decoder(torch.nn.Module):
                 high_mask = self.high_environment.update_state(action_mask= high_mask, next_idx= idx)            
                 
                 _idx = idx.unsqueeze(1).unsqueeze(2).repeat(1, 1, self.n_embedding) # torch.gather를 사용하기 위해 차원을 맞춰줌
-                if self.init_h is None:
-                    self.init_h = self.cell_context.gather(1, _idx).squeeze(1)
+                if init_h is None:
+                    init_h = cell_context.gather(1, _idx).squeeze(1)
 
-                self.h = self.cell_context.gather(1, _idx).squeeze(1)
-                h_rest = self.v_weight_embed(torch.cat((self.init_h, self.h), dim = -1)) # dim= -1 부분을 왜 이렇게 하는거지?
+                h = cell_context.gather(1, _idx).squeeze(1)
+                h_rest = self.v_weight_embed(torch.cat([init_h, h], dim = -1)) # dim= -1 부분을 왜 이렇게 하는거지?
                 query = h_bar + h_rest
                 total_reward = cell_reward + local_reward                  
                 total_log_prob = cell_log_prob + local_log_prob
@@ -181,12 +177,7 @@ class Low_Decoder(torch.nn.Module):
         # define pointer
         self.low_pointer = Pointer(self.n_embedding, self.n_hidden, self.C)
 
-        # define inital indecies
-        self.low_init_h = None
-        self.low_h = None
-
-    def forward(self, low_context_vector, original_node, mask):
-        self.low_context_vector = low_context_vector
+    def forward(self, low_context_vector, original_node, mask):        
         self.original_node = original_node        
         
         low_h_mean = self.calculate_low_context(low_context_vector=low_context_vector)
@@ -200,16 +191,20 @@ class Low_Decoder(torch.nn.Module):
         seq_len = low_context_vector.size(1)
 
         # set the environment
-        self.low_environment = Environment(batch_data= self.low_context_vector, is_local= True)        
+        self.low_environment = Environment(batch_data= low_context_vector, is_local= True)        
         current_idx = torch.tensor([0]).cuda()
 
-        # initialize
+        # define inital indecies
+        low_init_h = None
+        low_h = None
+
+        # initialize        
         init_node = None
         last_node = None
         local_R = 0
         for i in range(seq_len): 
             # change the initial mask                  
-            low_prob = self.low_pointer(query = low_query, target = self.low_context_vector, mask = mask)                     
+            low_prob = self.low_pointer(query = low_query, target = low_context_vector, mask = mask)                     
             
             low_node_distribution = Categorical(low_prob)
             low_idx = low_node_distribution.sample()
@@ -224,19 +219,19 @@ class Low_Decoder(torch.nn.Module):
             next_idx = low_idx
 
             _low_idx = low_idx.unsqueeze(1).unsqueeze(2).repeat(1, 1, self.n_embedding)
-            if self.low_init_h is None:
-                self.low_init_h = self.low_context_vector.gather(1, _low_idx).squeeze(1)
+            if low_init_h is None:
+                low_init_h = low_context_vector.gather(1, _low_idx).squeeze(1)
             
-            self.low_h = self.low_context_vector.gather(1, _low_idx).squeeze(1)
-            low_h_rest = self.low_v_weight_embed(torch.cat((self.low_init_h, self.low_h), dim = -1))
+            low_h = low_context_vector.gather(1, _low_idx).squeeze(1)
+            low_h_rest = self.low_v_weight_embed(torch.cat((low_init_h, low_h), dim = -1))
             low_query = low_h_bar + low_h_rest            
 
             # calculate reward
             _current_node, _next_node, local_reward = self.calculate_distance(self.original_node, current_index= current_idx, next_index= next_idx) 
-            current_idx = next_idx                                   
+            current_idx = next_idx.clone()                                   
             
             # sum the loca reward
-            local_R +=local_reward            
+            local_R +=local_reward.clone()            
 
             # get the node state to calculate the distance between current cell and next cell
             if i == 0:
@@ -268,8 +263,8 @@ class HCPP(torch.nn.Module):
         self.h_encoder = Encoder(n_feature= n_feature, n_hidden= n_hidden, high_level= high_level)
         self.h_decoder = Decoder(n_embedding= n_embedding, seq_len= seq_len, n_hidden= n_hidden, C = C)
 
-    def forward(self, batch_data, high_mask, low_mask):            
-        node_embed, cell_embed, original_data = self.h_encoder(batch_data, mask = None)        
+    def forward(self, batch_data, high_mask, low_mask):     
+        node_embed, cell_embed, original_data = self.h_encoder(batch_data, mask = None)                  
         log_prob, reward = self.h_decoder(node_embed, original_data, cell_embed, high_mask, low_mask)
         return log_prob, reward
 

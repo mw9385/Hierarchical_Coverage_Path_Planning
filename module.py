@@ -39,16 +39,16 @@ class Pointer(nn.Module):
         return alpha
 
 class MultiHeadAttentionLayer(nn.Module):
-    def __init__(self, d_model, n_head, qkv_fc_layer, fc_layer):
+    def __init__(self, n_hidden, n_head):
         # qkv_fc_layer = [d_embed, d_model]
         # fc_layer = [d_model, d_embed]
         super(MultiHeadAttentionLayer, self).__init__()
-        self.d_model = d_model
+        self.n_hidden = n_hidden
         self.n_head = n_head
-        self.query_fc_layer = copy.deepcopy(qkv_fc_layer)
-        self.key_fc_layer = copy.deepcopy(qkv_fc_layer)
-        self.value_fc_layer = copy.deepcopy(qkv_fc_layer)
-        self.fc_layer = fc_layer
+        self.query_fc_layer = nn.Linear(self.n_hidden, self.n_hidden)
+        self.key_fc_layer = nn.Linear(self.n_hidden, self.n_hidden)
+        self.value_fc_layer = nn.Linear(self.n_hidden, self.n_hidden)
+        self.fc_layer = nn.Linear(self.n_hidden, self.n_hidden)
 
     def forward(self, query, key, value, mask = None):
         # query, key, value = [batch, seq_len, n_hidden]
@@ -59,7 +59,7 @@ class MultiHeadAttentionLayer(nn.Module):
         def transform(x, fc_layer):
             # x = [batch, seq_len, n_hidden]
             out = fc_layer(x) # n_hidden -> d_model, out = [batch, seq_len, d_model]
-            out = out.view(n_batch, -1, self.n_head, self.d_model//self.n_head) 
+            out = out.view(n_batch, -1, self.n_head, self.n_hidden//self.n_head) 
             # out size = [batch, seq_len, n_head, d_k], d_k = d_model/n_head
             out = out.transpose(1,2) # out = [batch, n_head, seq_len, d_k]
             return out
@@ -72,7 +72,7 @@ class MultiHeadAttentionLayer(nn.Module):
             mask = mask.unsqueeze(1)
         out = self.calcuclate_attention(query, key, value, mask) #out [batch, n_head, seq_len, d_k]
         out = out.transpose(1,2) # out = [batch, seq_len, n_head, d_k]
-        out = out.contiguous().view(n_batch, -1, self.d_model) # out = [batch, seq_len, d_model]
+        out = out.contiguous().view(n_batch, -1, self.n_hidden) # out = [batch, seq_len, n_hidden]
         out = self.fc_layer(out) # d_model -> d_embed. out = [batch, seq_len, d_embed]
         return out
 

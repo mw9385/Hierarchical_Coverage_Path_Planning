@@ -37,12 +37,12 @@ class TSP():
             _tsp_vector = _tsp_vector.unsqueeze(0)
             self.tsp_vector = torch.cat((self.tsp_vector, _tsp_vector), dim = 0)
             self.tsp_data.append(_tsp_data)                        
+        
         # initialize the depot to zeros
-        for j, cells in enumerate(self.tsp_data):
-            for i, nodes in enumerate(cells):
-                if i==0:                                        
-                    nodes[0,:] = 0          
-                              
+        for j, cells in enumerate(self.tsp_data):            
+            for i, nodes in enumerate(cells):                
+                if i ==0:
+                    nodes[0,:] = 0.0                   
         return [self.tsp_data, self.cell, self.tsp_vector]
     
     def __len__(self):
