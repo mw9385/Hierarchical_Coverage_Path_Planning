@@ -21,7 +21,7 @@ parser = argparse.ArgumentParser(description="CPP with RL")
 parser.add_argument('--size', default=145, help="number of nodes")
 parser.add_argument('--epoch', default= 10, help="number of epochs")
 parser.add_argument('--steps', default= 500, help="number of epochs")
-parser.add_argument('--batch_size', default=32, help="number of batch size")
+parser.add_argument('--batch_size', default=64, help="number of batch size")
 parser.add_argument('--val_size', default=100, help="number of validation samples") # 이게 굳이 필요한가?
 parser.add_argument('--lr', type=float, default=1e-4, help="learning rate")
 parser.add_argument('--n_cells', default=5, help='number of visiting cells')
@@ -47,8 +47,8 @@ eval_interval = int(args['eval_interval'])
 pp.pprint(args)
 
 # generate training data
-n_train_samples = 1000
-n_val_samples = 500
+n_train_samples = 50000
+n_val_samples = 5000
 print("---------------------------------------------")
 print("GENERATE DATA")
 train_tsp_generator = TSP(n_batch=n_train_samples, n_cells = n_cells, size = size, max_distance = max_distance, is_train= True)
