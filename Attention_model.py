@@ -87,27 +87,33 @@ class Decoder(torch.nn.Module):
         # initialize node
         _last_node = torch.zeros([self.batch_size, 2]).cuda()  
         
-        cell_log_prob = 0
-        for i in range(self.seq_len):                                         
+        # initialize cell log_prob and cell reward
+        # list 형태를 사용하지 않고 torch cat을 사용하려고 했었는데, loop 안에서 반복적으로 들어가게 되면서 inplace operation error 발생
+        # 차선책으로 list로 tensor를 쌓아두고, torch.stack을 사용해서 list를 tensor 형태로 사용하는 방법을 이용함.
+        cell_log_prob = []
+        cell_reward = []
+        node_log_prob = []
+        node_reward = []
+        
+        for i in range(self.seq_len):            
             # we could add glimpse later                                
             prob = self.high_pointer(query=query, target=cell_context, mask = high_mask)                   
 
             if not torch.isnan(prob)[0][0]:
                 node_distribtution = Categorical(prob)
                 idx = node_distribtution.sample() # idx size = [batch]                
-                log_prob = node_distribtution.log_prob(idx) # change probability into log_prob
-                                
-                # calculate total log probability                
-                cell_log_prob += torch.sum(log_prob, dim=-1)                            
+                _cell_log_prob = node_distribtution.log_prob(idx) # change probability into log_prob                
+                
+                # calculate total log probability 
+                cell_log_prob.append(_cell_log_prob)                
                         
                 # 현재 상태에서  low_level_policy를 실행해서 local CPP 알고리즘 실행
-                low_log_prob = []                
+                _low_log_prob = []
+                _low_reward = []
                 
                 # define empty tensor to stack initial_node and last_node
                 init_node = torch.tensor(()).cuda()
-                last_node = torch.tensor(()).cuda()
-                local_reward = 0
-                local_log_prob = 0
+                last_node = torch.tensor(()).cuda()                
                 for id, (sub_node, sub_original_node, sub_mask) in enumerate(zip(node_context, self.original_data, low_mask)):                    
                     # get cell index
                     low_index = idx.gather(0, torch.tensor(id).cuda())
@@ -119,22 +125,27 @@ class Decoder(torch.nn.Module):
 
                     # calculate low_log_prob and low_action
                     # init_node, last_node are nodes at current time step
-                    _low_log_prob, _low_action, i_n, l_n, _local_reward = self.low_decoder(current_cell, original_cell, current_mask)
-                    local_log_prob += torch.sum(_low_log_prob, dim=1)
-
-                    # append log_prob and action                
-                    low_log_prob.append(_low_log_prob)                    
-
-                    # stack the local reward / local_reward size = []
-                    local_reward += _local_reward
+                    _log_prob, _low_action, i_n, l_n, _reward = self.low_decoder(current_cell, original_cell, current_mask)                                        
+                    _sum_p = torch.sum(_log_prob, dim=0)                    
+                    # append log_prob and action     
+                    _low_log_prob.append(_sum_p)
+                    _low_reward.append(_reward.squeeze(0))
+                    
                     # stack the last nodes                    
                     init_node = torch.cat((init_node, i_n), dim=0) # _init_node size: [batch, 2]
-                    last_node = torch.cat((last_node, l_n), dim=0) # _last_node size: [batch, 2]                
-                                           
+                    last_node = torch.cat((last_node, l_n), dim=0) # _last_node size: [batch, 2]                                
+                
+                _low_log_prob = torch.stack(_low_log_prob, 0)
+                _low_reward = torch.stack(_low_reward, 0)                
 
-                # calculate cell distance                
-                cell_reward = self.calculate_cell_distance(init_node= init_node, last_node=_last_node)                
-                cell_reward = torch.sum(cell_reward, dim=0)                
+                # stack inner log prob and reward
+                node_log_prob.append(_low_log_prob)
+                node_reward.append(_low_reward)                          
+                
+                # calculate cell distance    
+                _cell_reward = self.calculate_cell_distance(init_node= init_node, last_node=_last_node)
+                cell_reward.append(_cell_reward)                            
+                # cell_reward.append(self.calculate_cell_distance(init_node= init_node, last_node=_last_node))                
 
                 # update the node states
                 _last_node = last_node.clone()                
@@ -148,10 +159,23 @@ class Decoder(torch.nn.Module):
 
                 h = cell_context.gather(1, _idx).squeeze(1)
                 h_rest = self.v_weight_embed(torch.cat([init_h, h], dim = -1)) # dim= -1 부분을 왜 이렇게 하는거지?
-                query = h_bar + h_rest
-                total_reward = cell_reward + local_reward                  
-                total_log_prob = cell_log_prob + local_log_prob
+                query = h_bar + h_rest   
+        
+        # change the dimension of reward and log_probability
+        # size of cell_reward, cell_log_prob, low_reward, low_log_prob = [batch]   
+        high_reward = torch.stack(cell_reward, 1)
+        high_log_prob = torch.stack(cell_log_prob, 1)
+        low_reward = torch.stack(node_reward, 1)
+        low_log_prob = torch.stack(node_log_prob, 1)
+        
+        high_reward = torch.sum(high_reward.clone(), dim=1)
+        high_log_prob = torch.sum(high_log_prob.clone(), dim=1)
+        low_reward = torch.sum(low_reward.clone(), dim=1)
+        low_log_prob = torch.sum(low_log_prob.clone(), dim=1)
 
+        # sum up the log_prob and rewards        
+        total_log_prob = torch.add(high_log_prob, low_log_prob)
+        total_reward = torch.add(high_reward, low_reward)        
         return total_log_prob, total_reward
                 
     def calculate_context(self, context_vector):
@@ -177,21 +201,22 @@ class Low_Decoder(torch.nn.Module):
         # define pointer
         self.low_pointer = Pointer(self.n_embedding, self.n_hidden, self.C)
 
-    def forward(self, low_context_vector, original_node, mask):        
+    def forward(self, low_context_vector, original_node, mask): 
+        low_cv = low_context_vector.clone()
         self.original_node = original_node        
         
-        low_h_mean = self.calculate_low_context(low_context_vector=low_context_vector)
+        low_h_mean = self.calculate_low_context(low_context_vector=low_cv)
         low_h_bar = self.low_h_context_embed(low_h_mean)
         low_h_rest = self.low_v_weight_embed(self.low_init_w)
         low_query = low_h_bar + low_h_rest
 
         low_temp_idx = []
-        low_temp_log_prob = []
+        low_temp_log_prob = torch.tensor(()).cuda()
         # mask size 잘 고려해서 넣자. low_mask는 dimension이 다르다.
         seq_len = low_context_vector.size(1)
 
         # set the environment
-        self.low_environment = Environment(batch_data= low_context_vector, is_local= True)        
+        self.low_environment = Environment(batch_data= low_cv, is_local= True)        
         current_idx = torch.tensor([0]).cuda()
 
         # define inital indecies
@@ -204,19 +229,19 @@ class Low_Decoder(torch.nn.Module):
         local_R = 0
         for i in range(seq_len): 
             # change the initial mask                  
-            low_prob = self.low_pointer(query = low_query, target = low_context_vector, mask = mask)                     
+            low_prob = self.low_pointer(query = low_query, target = low_cv, mask = mask)                     
             
             low_node_distribution = Categorical(low_prob)
             low_idx = low_node_distribution.sample()
-            low_log_prob = low_node_distribution.log_prob(low_idx)
+            _low_log_prob = low_node_distribution.log_prob(low_idx)
             
             # append the action and log_probability
             low_temp_idx.append(low_idx)
-            low_temp_log_prob.append(low_log_prob)
+            low_temp_log_prob = torch.cat((low_temp_log_prob, _low_log_prob.clone()), dim=0)            
                         
             # low mask action masking            
             mask = self.low_environment.update_state(action_mask= mask, next_idx = low_idx)
-            next_idx = low_idx
+            next_idx = low_idx.clone()
 
             _low_idx = low_idx.unsqueeze(1).unsqueeze(2).repeat(1, 1, self.n_embedding)
             if low_init_h is None:
@@ -239,7 +264,7 @@ class Low_Decoder(torch.nn.Module):
             if i == seq_len-1:
                 last_node = _next_node.clone()            
         
-        return torch.stack(low_temp_log_prob, 1), torch.stack(low_temp_idx, 1), init_node, last_node, local_R
+        return low_temp_log_prob.clone(), torch.stack(low_temp_idx, 1), init_node, last_node, local_R
 
     def calculate_low_context(self, low_context_vector):
         return torch.mean(low_context_vector, dim = 1)
