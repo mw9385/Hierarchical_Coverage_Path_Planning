@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from Environment import Environment
-from module import Pointer, MultiHeadAttentionLayer
+from module import Pointer, MultiHeadAttentionLayer, AttentionModule
 from torch.distributions import Categorical
 
 
@@ -10,16 +10,23 @@ class Encoder(torch.nn.Module):
         super(Encoder, self).__init__()        
 
         self.embedding_x = nn.Linear(n_feature, n_hidden)
-        self.high_level = high_level
-        self.multi_head_attention = MultiHeadAttentionLayer(
-                                            n_hidden= n_hidden,
-                                            n_head = 8)
-        self.low_attention = MultiHeadAttentionLayer(
-                                            n_hidden= n_hidden,
-                                            n_head = 8)
-        self.high_attention = MultiHeadAttentionLayer(
-                                            n_hidden= n_hidden,
-                                            n_head = 8)
+        self.high_level = high_level        
+        # self.low_attention = MultiHeadAttentionLayer(
+        #                                     n_hidden= n_hidden,
+        #                                     n_head = 8)
+        # self.high_attention = MultiHeadAttentionLayer(
+        #                                     n_hidden= n_hidden,
+        #                                     n_head = 8)
+        self.low_attention = AttentionModule(
+                                            n_heads = 8,
+                                            n_hidden = n_hidden,
+                                            n_layers = 3
+                                            )
+        self.high_attention = AttentionModule(
+                                            n_heads = 8,
+                                            n_hidden = n_hidden,
+                                            n_layers = 3
+                                            )
 
     def forward(self, batch_data, mask = None):
         self.batch_data = batch_data
@@ -27,8 +34,9 @@ class Encoder(torch.nn.Module):
         for batch_samples in self.batch_data:            
             _low_node = []
             for sample in batch_samples:
-                x = self.embedding_x(sample.clone().cuda()).unsqueeze(0) # x_size = [1, num_nodes, n_hidden]                
-                _low_node.append(self.low_attention(query = x, key = x, value = x, mask = None))                
+                x = self.embedding_x(sample.clone().cuda()).unsqueeze(0) # x_size = [1, num_nodes, n_hidden] 
+                _low_node.append(self.low_attention(x))                                               
+                # _low_node.append(self.low_attention(query = x, key = x, value = x, mask = None))                
             self.low_node.append(_low_node)                                
         
         # cell embedding
@@ -44,7 +52,8 @@ class Encoder(torch.nn.Module):
             for cell_samples in sub_nodes:
                 _mean = torch.cat((_mean, torch.mean(cell_samples, dim=1)), dim = 0) 
             embedded_mean = torch.cat((embedded_mean, _mean.unsqueeze(0)), dim = 0)
-        att_cell = self.high_attention(query = embedded_mean, key = embedded_mean, value = embedded_mean, mask = None)
+        att_cell = self.high_attention(embedded_mean)
+        # att_cell = self.high_attention(query = embedded_mean, key = embedded_mean, value = embedded_mean, mask = None)
         return att_cell
 
 class Decoder(torch.nn.Module):

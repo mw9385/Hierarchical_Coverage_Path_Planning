@@ -18,7 +18,7 @@ class Pointer(nn.Module):
 
         self.W_q = nn.Linear(self.n_embedding, self.n_hidden)
         self.W_k = nn.Linear(self.n_embedding, self.n_hidden)
-        self.W_v = nn.Linear(self.n_embedding, self.n_hidden)
+        # self.W_v = nn.Linear(self.n_embedding, self.n_hidden)
 
     def forward(self, query, target, mask = None):
         """
@@ -28,7 +28,7 @@ class Pointer(nn.Module):
         """
         q = self.W_q(query) # query size = [batch, n_hidden]
         k = self.W_k(target) # key size = [batch, seq_len, n_hidden]
-        v = self.W_v(target) # value size = [batch, seq_len, n_hidden]
+        # v = self.W_v(target) # value size = [batch, seq_len, n_hidden]
         qk = torch.einsum("ik, ijk -> ij", [q,k]) # qk size = [batch, seq_len]
         qk = self.C * torch.tanh(qk) # qk size = [batch, seq_len]                
         
@@ -86,3 +86,31 @@ class MultiHeadAttentionLayer(nn.Module):
         out = F.softmax(score, dim = -1) # get the softmax score
         out = torch.matmul(out, value) # score x V
         return out
+
+
+class Multi_Layer(nn.Module):
+    def __init__(self, n_heads, n_hidden, bn=False):
+        super(Multi_Layer, self).__init__()
+        self.mha = MultiHeadAttentionLayer(n_hidden= n_hidden, n_head = n_heads)
+        self.out = nn.Sequential(nn.Linear(n_hidden, n_hidden), nn.ReLU(), nn.Linear(n_hidden, n_hidden))
+
+    def forward(self, x):
+        """"
+        [input]
+            x = batch X seq_len X embedding_size
+        [output]
+            _2 = batch X seq_len X embedding_size
+        """
+        x = x.permute(1,0,2)        
+        _1 = x +  self.mha(x, x, x)[0]
+        _1 = _1.permute(1, 0, 2)
+        _2 = _1 + self.out(_1)
+        return _2
+
+class AttentionModule(nn.Sequential):
+    def __init__(self, n_heads, n_hidden, n_layers = 3):
+        super(AttentionModule, self).__init__(
+            *(Multi_Layer(n_heads = n_heads, n_hidden=n_hidden) for _ in range(n_layers))
+        )
+
+

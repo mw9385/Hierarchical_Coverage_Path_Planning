@@ -32,7 +32,7 @@ class TSP():
                 # create a multivariable distributions
                 m = tdist.multivariate_normal.MultivariateNormal(self.cell[j, i].clone(), torch.eye(2) * self.max_distance)                
                 _sample = m.sample((n_rand_cell[i],))                
-                _tsp_data.append(_sample / 50.0)                
+                _tsp_data.append(_sample / 25.0)                
                 _tsp_vector = torch.cat((_tsp_vector, _sample), dim = 0)
             _tsp_vector = _tsp_vector.unsqueeze(0)
             self.tsp_vector = torch.cat((self.tsp_vector, _tsp_vector), dim = 0)
