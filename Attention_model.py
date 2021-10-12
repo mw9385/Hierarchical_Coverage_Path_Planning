@@ -184,7 +184,7 @@ class Decoder(torch.nn.Module):
 
         # sum up the log_prob and rewards        
         total_log_prob = torch.add(high_log_prob, low_log_prob)
-        total_reward = torch.add(high_reward, low_reward)        
+        total_reward = -torch.add(high_reward, low_reward)        
         return total_log_prob, total_reward
                 
     def calculate_context(self, context_vector):

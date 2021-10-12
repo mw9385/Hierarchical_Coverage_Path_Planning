@@ -47,8 +47,8 @@ eval_interval = int(args['eval_interval'])
 pp.pprint(args)
 
 # generate training data
-n_train_samples = 1000
-n_val_samples = 500
+n_train_samples = 50000
+n_val_samples = 3000
 print("---------------------------------------------")
 print("GENERATE DATA")
 train_tsp_generator = TSP(n_batch=n_train_samples, n_cells = n_cells, size = size, max_distance = max_distance, is_train= True)
@@ -58,7 +58,7 @@ valid_tsp_generator = TSP(n_batch=n_val_samples, n_cells = n_cells, size = size,
 print("FINISHED")
 
 # tensorboard 
-writer = SummaryWriter(log_dir='./log')
+writer = SummaryWriter(log_dir='./log/V1')
 
 # define model
 model = HCPP(n_feature = 2, n_hidden= n_hidden, high_level= True, n_embedding= n_hidden, seq_len= n_cells, C = 10).cuda()
@@ -166,7 +166,7 @@ if __name__=="__main__":
                 # ----------------------------------------------------------------------------------------------------------#
                 # evaluate the performance 
                 _, test_reward = model(test_X, high_mask = test_high_mask, low_mask = test_low_mask)  
-                test_reward = test_reward.mean()
+                test_reward = -test_reward.mean()
                 print("TEST REWARD of {}th step:{}".format(global_step, test_reward))
                 writer.add_scalar("Test reward", test_reward, global_step= global_step)                            
 
@@ -174,7 +174,7 @@ if __name__=="__main__":
             if step!=0 and step % log_interval == 0:
                 print("SAVE MODEL")
                 dir_root = './model/HCPP'
-                file_name = "HCPP_V1"
+                file_name = "HCPP_V2"
                 param_path = dir_root +  "/" + file_name + ".param"
                 config_path = dir_root + "/" + file_name + '.config'
 
@@ -186,12 +186,12 @@ if __name__=="__main__":
                     'model_state_dict': model.state_dict(),
                     'optimizer_state_dict': optimizer.state_dict(),
                     'loss': loss,
-                    'reward': reward.mean()
+                    'reward': -reward.mean()
                 }, config_path)
 
                 # write information in tensorboard            
                 writer.add_scalar("loss", loss, global_step= global_step)
-                writer.add_scalar("distance", reward.mean(), global_step= global_step)
+                writer.add_scalar("distance", -reward.mean(), global_step= global_step)
 
                 # write gradient information
                 for name, param in model.named_parameters():
