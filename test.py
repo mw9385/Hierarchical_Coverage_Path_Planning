@@ -84,16 +84,16 @@ if __name__=="__main__":
     high_mask = torch.zeros([B, n_cells], dtype = torch.int64).cuda()        
     _,_, high_action, low_action  = model(X_test, high_mask = high_mask, low_mask = low_mask)
     
-"""
-[high_action]: batch x n_cells / type: tensor
-[low action]: n_cells x batch x number of local nodes /type: list
-"""
-# random selection of batch
-random_batch_index = np.random.randint(B)
-sample = X_test[random_batch_index]
-sample_high_action = high_action[random_batch_index]
+    """
+    [high_action]: batch x n_cells / type: tensor
+    [low action]: n_cells x batch x number of local nodes /type: list
+    """
+    # random selection of batch
+    random_batch_index = np.random.randint(B)
+    sample = X_test[random_batch_index]
+    sample_high_action = high_action[random_batch_index]
 
-plot_tsp(sample=sample, high_mask=sample_high_action, low_mask=low_action, batch_index = random_batch_index)
+    plot_tsp(sample=sample, high_mask=sample_high_action, low_mask=low_action, batch_index = random_batch_index)
 
 
 
