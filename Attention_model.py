@@ -10,13 +10,7 @@ class Encoder(torch.nn.Module):
         super(Encoder, self).__init__()        
 
         self.embedding_x = nn.Linear(n_feature, n_hidden)
-        self.high_level = high_level        
-        # self.low_attention = MultiHeadAttentionLayer(
-        #                                     n_hidden= n_hidden,
-        #                                     n_head = 8)
-        # self.high_attention = MultiHeadAttentionLayer(
-        #                                     n_hidden= n_hidden,
-        #                                     n_head = 8)
+        self.high_level = high_level                
         self.low_attention = AttentionModule(
                                             n_heads = 8,
                                             n_hidden = n_hidden,
@@ -90,8 +84,7 @@ class Decoder(torch.nn.Module):
         # query = [batch, embedding_size]        
 
         # set the high environment
-        self.high_environment = Environment(batch_data= cell_context, is_local= False)    
-        high_mask[:, 0] = 1   # n_cell의 가장 첫번째 부분만 1로 masking 작업 진행 // size: [batch, n_cells]
+        self.high_environment = Environment(batch_data= cell_context, is_local= False)            
         
         # initialize node
         _last_node = torch.zeros([self.batch_size, 2]).cuda()  
@@ -103,80 +96,96 @@ class Decoder(torch.nn.Module):
         cell_reward = []
         node_log_prob = []
         node_reward = []
-        
+        low_action = []
+        high_action = []
+
+        # depot을 0으로 바꾸면서 masking의 갯수가 문제가 생겼음... 
         for i in range(self.seq_len):            
             # we could add glimpse later                                
             prob = self.high_pointer(query=query, target=cell_context, mask = high_mask)                   
+            node_distribtution = Categorical(prob)
+            idx = node_distribtution.sample() # idx size = [batch]            
+            # for home depot
+            if i==0:
+                idx = torch.zeros([self.batch_size,], dtype = torch.int64).cuda()                
+            _cell_log_prob = node_distribtution.log_prob(idx)
 
-            if not torch.isnan(prob)[0][0]:
-                node_distribtution = Categorical(prob)
-                idx = node_distribtution.sample() # idx size = [batch]                
-                _cell_log_prob = node_distribtution.log_prob(idx) # change probability into log_prob                
+            # append high action
+            high_action.append(idx)
+
+            # calculate total log probability
+            cell_log_prob.append(_cell_log_prob)                    
+                                        
+            # 현재 상태에서  low_level_policy를 실행해서 local CPP 알고리즘 실행
+            _low_log_prob = []
+            _low_reward = []
+            _low_action = []
                 
-                # calculate total log probability 
-                cell_log_prob.append(_cell_log_prob)                
-                        
-                # 현재 상태에서  low_level_policy를 실행해서 local CPP 알고리즘 실행
-                _low_log_prob = []
-                _low_reward = []
+            # define empty tensor to stack initial_node and last_node
+            init_node = torch.tensor(()).cuda()
+            last_node = torch.tensor(()).cuda()   
                 
-                # define empty tensor to stack initial_node and last_node
-                init_node = torch.tensor(()).cuda()
-                last_node = torch.tensor(()).cuda()                
-                for id, (sub_node, sub_original_node, sub_mask) in enumerate(zip(node_context, self.original_data, low_mask)):                    
-                    # get cell index
-                    low_index = idx.gather(0, torch.tensor(id).cuda())
+            for id, (sub_node, sub_original_node, sub_mask) in enumerate(zip(node_context, self.original_data, low_mask)):                                        
+                # batch size 개수만큼 for loop를 돌린다. 
+                # get cell index
+                low_index = idx.gather(0, torch.tensor(id).cuda())                    
 
-                    # get current node state
-                    current_cell = sub_node[low_index].clone()
-                    original_cell = sub_original_node[low_index].clone()
-                    current_mask = sub_mask[low_index].clone()
+                # get current node state
+                current_cell = sub_node[low_index].clone()
+                original_cell = sub_original_node[low_index].clone()
+                current_mask = sub_mask[low_index].clone()
 
-                    # calculate low_log_prob and low_action
-                    # init_node, last_node are nodes at current time step
-                    _log_prob, _low_action, i_n, l_n, _reward = self.low_decoder(current_cell, original_cell, current_mask)                                        
-                    _sum_p = torch.sum(_log_prob, dim=0)                    
-                    # append log_prob and action     
-                    _low_log_prob.append(_sum_p)
-                    _low_reward.append(_reward.squeeze(0))
-                    
-                    # stack the last nodes                    
-                    init_node = torch.cat((init_node, i_n), dim=0) # _init_node size: [batch, 2]
-                    last_node = torch.cat((last_node, l_n), dim=0) # _last_node size: [batch, 2]                                
+                # calculate low_log_prob and low_action
+                # init_node, last_node are nodes at current time step                
+                _log_prob, _l_a, i_n, l_n, _reward = self.low_decoder(current_cell, original_cell, current_mask)                                                        
+                _sum_p = torch.sum(_log_prob, dim=0)                    
                 
-                _low_log_prob = torch.stack(_low_log_prob, 0)
-                _low_reward = torch.stack(_low_reward, 0)                
-
-                # stack inner log prob and reward
-                node_log_prob.append(_low_log_prob)
-                node_reward.append(_low_reward)                          
+                # append log_prob and action     
+                _low_log_prob.append(_sum_p)
+                _low_reward.append(_reward.squeeze(0))                                    
+                _low_action.append(_l_a.squeeze(0)) # [batch, nodes]                
                 
-                # calculate cell distance    
-                _cell_reward = self.calculate_cell_distance(init_node= init_node, last_node=_last_node)
-                cell_reward.append(_cell_reward)                            
-                # cell_reward.append(self.calculate_cell_distance(init_node= init_node, last_node=_last_node))                
+                # stack the last nodes                    
+                init_node = torch.cat((init_node, i_n), dim=0) # _init_node size: [batch, 2]
+                last_node = torch.cat((last_node, l_n), dim=0) # _last_node size: [batch, 2]                                
+            
+            _low_log_prob = torch.stack(_low_log_prob, 0)
+            _low_reward = torch.stack(_low_reward, 0)
 
-                # update the node states
-                _last_node = last_node.clone()                
-                    
-                # action masking for high level policy
-                high_mask = self.high_environment.update_state(action_mask= high_mask, next_idx= idx)            
+            # _low_action은 list 형태이기 때문에 torch.stack을 사용하지 못함. _low_action = [batch size, # number of local nodes]
+            # stack inner log prob and reward
+            node_log_prob.append(_low_log_prob)
+            node_reward.append(_low_reward)                          
+            low_action.append(_low_action) # list shape = [cell, batch, # nodes]
+            
+            # calculate cell distance    
+            _cell_reward = self.calculate_cell_distance(init_node= init_node, last_node=_last_node)
+            cell_reward.append(_cell_reward)                            
+            # cell_reward.append(self.calculate_cell_distance(init_node= init_node, last_node=_last_node))                
+
+            # update the node states
+            _last_node = last_node.clone()                
                 
-                _idx = idx.unsqueeze(1).unsqueeze(2).repeat(1, 1, self.n_embedding) # torch.gather를 사용하기 위해 차원을 맞춰줌
-                if init_h is None:
-                    init_h = cell_context.gather(1, _idx).squeeze(1)
+            # action masking for high level policy
+            high_mask = self.high_environment.update_state(action_mask= high_mask, next_idx= idx)            
+            
+            _idx = idx.unsqueeze(1).unsqueeze(2).repeat(1, 1, self.n_embedding) # torch.gather를 사용하기 위해 차원을 맞춰줌
+            if init_h is None:
+                init_h = cell_context.gather(1, _idx).squeeze(1)
 
-                h = cell_context.gather(1, _idx).squeeze(1)
-                h_rest = self.v_weight_embed(torch.cat([init_h, h], dim = -1)) # dim= -1 부분을 왜 이렇게 하는거지?
-                query = h_bar + h_rest   
+            h = cell_context.gather(1, _idx).squeeze(1)
+            h_rest = self.v_weight_embed(torch.cat([init_h, h], dim = -1)) # dim= -1 부분을 왜 이렇게 하는거지?
+            query = h_bar + h_rest   
         
         # change the dimension of reward and log_probability
-        # size of cell_reward, cell_log_prob, low_reward, low_log_prob = [batch]   
+        # size of cell_reward, cell_log_prob, low_reward, low_log_prob = [batch]           
         high_reward = torch.stack(cell_reward, 1)
         high_log_prob = torch.stack(cell_log_prob, 1)
         low_reward = torch.stack(node_reward, 1)
         low_log_prob = torch.stack(node_log_prob, 1)
-        
+        high_action = torch.stack(high_action, 1) # batch x n_cells -1
+        #low_action size = [n_cells-1, batch, # of nodes]
+
         high_reward = torch.sum(high_reward.clone(), dim=1)
         high_log_prob = torch.sum(high_log_prob.clone(), dim=1)
         low_reward = torch.sum(low_reward.clone(), dim=1)
@@ -185,7 +194,18 @@ class Decoder(torch.nn.Module):
         # sum up the log_prob and rewards        
         total_log_prob = torch.add(high_log_prob, low_log_prob)
         total_reward = -torch.add(high_reward, low_reward)        
-        return total_log_prob, total_reward
+
+        # batch size 갯수가 맞는지 확인
+        # aa_index = 0
+        # sample = original_data[aa_index]        
+        # bb = high_action[aa_index]        
+        # print(sample)
+        # print(bb)
+        # print('----------------')
+        # for ss in low_action:            
+        #     print(ss[aa_index])
+
+        return total_log_prob, total_reward, high_action, low_action
                 
     def calculate_context(self, context_vector):
         return torch.mean(context_vector, dim=1)
@@ -271,8 +291,7 @@ class Low_Decoder(torch.nn.Module):
             if i == 0:
                 init_node = _current_node.clone()
             if i == seq_len-1:
-                last_node = _next_node.clone()            
-        
+                last_node = _next_node.clone()                                
         return low_temp_log_prob.clone(), torch.stack(low_temp_idx, 1), init_node, last_node, local_R
 
     def calculate_low_context(self, low_context_vector):
@@ -299,7 +318,7 @@ class HCPP(torch.nn.Module):
 
     def forward(self, batch_data, high_mask, low_mask):     
         node_embed, cell_embed, original_data = self.h_encoder(batch_data, mask = None)                  
-        log_prob, reward = self.h_decoder(node_embed, original_data, cell_embed, high_mask, low_mask)
-        return log_prob, reward
+        log_prob, reward, high_action, low_action = self.h_decoder(node_embed, original_data, cell_embed, high_mask, low_mask)
+        return log_prob, reward, high_action, low_action
 
 

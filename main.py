@@ -21,11 +21,11 @@ parser = argparse.ArgumentParser(description="CPP with RL")
 parser.add_argument('--size', default=145, help="number of nodes")
 parser.add_argument('--epoch', default= 10, help="number of epochs")
 parser.add_argument('--steps', default= 500, help="number of epochs")
-parser.add_argument('--batch_size', default=512, help="number of batch size")
+parser.add_argument('--batch_size', default=4, help="number of batch size")
 parser.add_argument('--val_size', default=100, help="number of validation samples") # 이게 굳이 필요한가?
 parser.add_argument('--lr', type=float, default=1e-4, help="learning rate")
 parser.add_argument('--n_cells', default=5, help='number of visiting cells')
-parser.add_argument('--max_distance', default=1, help="maximum distance of nodes from the center of cell")
+parser.add_argument('--max_distance', default=20, help="maximum distance of nodes from the center of cell")
 parser.add_argument('--n_hidden', default=128, help="nuber of hidden nodes")
 parser.add_argument('--log_interval', default=5, help="store model at every epoch")
 parser.add_argument('--eval_interval', default=50, help='update frequency')
@@ -47,18 +47,18 @@ eval_interval = int(args['eval_interval'])
 pp.pprint(args)
 
 # generate training data
-n_train_samples = 50000
-n_val_samples = 3000
+n_train_samples = 1000
+n_val_samples = 300
 print("---------------------------------------------")
 print("GENERATE DATA")
 train_tsp_generator = TSP(n_batch=n_train_samples, n_cells = n_cells, size = size, max_distance = max_distance, is_train= True)
 valid_tsp_generator = TSP(n_batch=n_val_samples, n_cells = n_cells, size = size, max_distance = max_distance, is_train= False)
-[X_train, X_train_cell, X_train_vector] = train_tsp_generator.generate_data()
-[X_val, X_val_cell, X_val_vector] = valid_tsp_generator.generate_data()
+X_train = train_tsp_generator.generate_data()
+X_val = valid_tsp_generator.generate_data()
 print("FINISHED")
 
 # tensorboard 
-writer = SummaryWriter(log_dir='./log/V1')
+writer = SummaryWriter(log_dir='./log/V2')
 
 # define model
 model = HCPP(n_feature = 2, n_hidden= n_hidden, high_level= True, n_embedding= n_hidden, seq_len= n_cells, C = 10).cuda()
@@ -91,7 +91,7 @@ if __name__=="__main__":
     high_mask = torch.zeros([B, n_cells], dtype = torch.int64).cuda()
 
     # get log_prob and reward
-    base_log_prob, base_reward = model(baseline_X, high_mask = high_mask, low_mask = low_mask)    
+    base_log_prob, base_reward, _, _ = model(baseline_X, high_mask = high_mask, low_mask = low_mask)    
 
     # define initial moving average
     _baseline = base_reward.clone()    
@@ -128,7 +128,7 @@ if __name__=="__main__":
             high_mask = torch.zeros([B, n_cells], dtype = torch.int64).cuda()
             # ----------------------------------------------------------------------------------------------------------#
 
-            log_prob, reward = model(X, high_mask = high_mask, low_mask = low_mask)                  
+            log_prob, reward, _, _ = model(X, high_mask = high_mask, low_mask = low_mask)                  
             baseline = _baseline * beta + reward * (1.0 - beta)
             advantage = reward - baseline
             _baseline = baseline.clone()
@@ -165,7 +165,7 @@ if __name__=="__main__":
                 test_high_mask = torch.zeros([B, n_cells], dtype = torch.int64).cuda()
                 # ----------------------------------------------------------------------------------------------------------#
                 # evaluate the performance 
-                _, test_reward = model(test_X, high_mask = test_high_mask, low_mask = test_low_mask)  
+                _, test_reward, _, _ = model(test_X, high_mask = test_high_mask, low_mask = test_low_mask)  
                 test_reward = -test_reward.mean()
                 print("TEST REWARD of {}th step:{}".format(global_step, test_reward))
                 writer.add_scalar("Test reward", test_reward, global_step= global_step)                            
@@ -180,7 +180,7 @@ if __name__=="__main__":
 
                 # make model directory if is not exist
                 os.makedirs(dir_root, exist_ok=True)
-                            
+                # torch.save(model, model.state_dict(), config_path)  
                 torch.save({
                     'epoch': epoch,
                     'model_state_dict': model.state_dict(),
