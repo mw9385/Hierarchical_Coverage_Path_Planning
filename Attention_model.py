@@ -105,7 +105,8 @@ class Decoder(torch.nn.Module):
             prob = self.high_pointer(query=query, target=cell_context, mask = high_mask)                   
             node_distribtution = Categorical(prob)
             idx = node_distribtution.sample() # idx size = [batch]            
-            # for home depot
+            
+            # for the home cell
             if i==0:
                 idx = torch.zeros([self.batch_size,], dtype = torch.int64).cuda()                
             _cell_log_prob = node_distribtution.log_prob(idx)
@@ -128,16 +129,15 @@ class Decoder(torch.nn.Module):
             for id, (sub_node, sub_original_node, sub_mask) in enumerate(zip(node_context, self.original_data, low_mask)):                                        
                 # batch size 개수만큼 for loop를 돌린다. 
                 # get cell index
-                low_index = idx.gather(0, torch.tensor(id).cuda())                    
-
+                low_index = idx.gather(0, torch.tensor(id).cuda())                                    
                 # get current node state
                 current_cell = sub_node[low_index].clone()
                 original_cell = sub_original_node[low_index].clone()
-                current_mask = sub_mask[low_index].clone()
+                current_mask = sub_mask[low_index].clone()                
 
                 # calculate low_log_prob and low_action
                 # init_node, last_node are nodes at current time step                
-                _log_prob, _l_a, i_n, l_n, _reward = self.low_decoder(current_cell, original_cell, current_mask)                                                        
+                _log_prob, _l_a, i_n, l_n, _reward = self.low_decoder(current_cell, original_cell, current_mask, i)                                                        
                 _sum_p = torch.sum(_log_prob, dim=0)                    
                 
                 # append log_prob and action     
@@ -230,7 +230,7 @@ class Low_Decoder(torch.nn.Module):
         # define pointer
         self.low_pointer = Pointer(self.n_embedding, self.n_hidden, self.C)
 
-    def forward(self, low_context_vector, original_node, mask): 
+    def forward(self, low_context_vector, original_node, mask, id): 
         low_cv = low_context_vector.clone()
         self.original_node = original_node        
         
@@ -257,13 +257,15 @@ class Low_Decoder(torch.nn.Module):
         last_node = None
         local_R = 0
         for i in range(seq_len): 
-            # change the initial mask                  
             low_prob = self.low_pointer(query = low_query, target = low_cv, mask = mask)                     
-            
             low_node_distribution = Categorical(low_prob)
-            low_idx = low_node_distribution.sample()
-            _low_log_prob = low_node_distribution.log_prob(low_idx)
-            
+            low_idx = low_node_distribution.sample()            
+            # change the initial mask               
+            if i == 0 and id ==0:
+                low_idx = torch.zeros([1,], dtype=torch.int64).cuda()            
+            _low_log_prob = low_node_distribution.log_prob(low_idx)            
+            # print(_low_log_prob)
+
             # append the action and log_probability
             low_temp_idx.append(low_idx)
             low_temp_log_prob = torch.cat((low_temp_log_prob, _low_log_prob.clone()), dim=0)            
