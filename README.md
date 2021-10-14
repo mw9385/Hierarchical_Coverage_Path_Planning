@@ -5,3 +5,6 @@
 - Need to retrain the model with a changed mask matrix
 - Change the reward function
 - ~~Visualize the model performance in real time~~
+### What are the possible problems?
+- Wrong reward function setting: The reward function should be negative?
+- Wrong model design
