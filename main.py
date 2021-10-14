@@ -26,7 +26,7 @@ parser.add_argument('--val_size', default=100, help="number of validation sample
 parser.add_argument('--lr', type=float, default=1e-4, help="learning rate")
 parser.add_argument('--n_cells', default=5, help='number of visiting cells')
 parser.add_argument('--max_distance', default=20, help="maximum distance of nodes from the center of cell")
-parser.add_argument('--n_hidden', default=128, help="nuber of hidden nodes")
+parser.add_argument('--n_hidden', default=128, help="nuber of hidden nodes") # 512개를 사용하는 경우 성능이 좋지 못함
 parser.add_argument('--log_interval', default=5, help="store model at every epoch")
 parser.add_argument('--eval_interval', default=50, help='update frequency')
 args = vars(parser.parse_args())
@@ -58,7 +58,7 @@ X_val = valid_tsp_generator.generate_data()
 print("FINISHED")
 
 # tensorboard 
-writer = SummaryWriter(log_dir='./log/V2')
+writer = SummaryWriter(log_dir='./log/V3')
 
 # define model
 model = HCPP(n_feature = 2, n_hidden= n_hidden, high_level= True, n_embedding= n_hidden, seq_len= n_cells, C = 10).cuda()
@@ -175,7 +175,7 @@ if __name__=="__main__":
             if step!=0 and step % log_interval == 0:
                 print("SAVE MODEL")
                 dir_root = './model/HCPP'
-                file_name = "HCPP_V2"
+                file_name = "HCPP_V3"
                 param_path = dir_root +  "/" + file_name + ".param"
                 config_path = dir_root + "/" + file_name + '.config'
 
