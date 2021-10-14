@@ -10,7 +10,7 @@ class TSP():
         self.size = size
         self.max_distance = max_distance
         self.is_train = is_train
-        self.cell_distance = 30
+        self.cell_distance = 100
 
         if is_train:
             torch.manual_seed(1234)
@@ -20,7 +20,8 @@ class TSP():
     def generate_data(self):        
         # generate random cell points
         # fix the number of points 
-        self.cell = torch.randn(self.n_batch, self.n_cells, 2) * self.cell_distance
+        self.cell = torch.normal(10, self.cell_distance, size = (self.n_batch, self.n_cells, 2))
+        # self.cell = torch.randn(self.n_batch, self.n_cells, 2) * self.cell_distance
         self.tsp_data = []
         self.tsp_vector = torch.tensor(())
 
@@ -32,18 +33,18 @@ class TSP():
                 # create a multivariable distributions
                 m = tdist.multivariate_normal.MultivariateNormal(self.cell[j, i].clone(), torch.eye(2) * self.max_distance)                
                 _sample = m.sample((n_rand_cell[i],))                
-                _tsp_data.append(_sample / 25.0)                
+                _tsp_data.append(_sample / 50.0)                
                 _tsp_vector = torch.cat((_tsp_vector, _sample), dim = 0)
             _tsp_vector = _tsp_vector.unsqueeze(0)
             self.tsp_vector = torch.cat((self.tsp_vector, _tsp_vector), dim = 0)
             self.tsp_data.append(_tsp_data)                        
         
         # initialize the depot to zeros
-        for j, cells in enumerate(self.tsp_data):            
-            for i, nodes in enumerate(cells):                
-                if i ==0:
-                    nodes[0,:] = 0.0                   
-        return [self.tsp_data, self.cell, self.tsp_vector]
+        # for j, cells in enumerate(self.tsp_data):            
+        #     for i, nodes in enumerate(cells):                
+        #         if i ==0:
+        #             nodes[0,:] = 0.0                   
+        return self.tsp_data
     
     def __len__(self):
         return len(self.tsp_data)

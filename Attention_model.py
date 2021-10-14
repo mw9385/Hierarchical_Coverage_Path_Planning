@@ -193,7 +193,7 @@ class Decoder(torch.nn.Module):
 
         # sum up the log_prob and rewards        
         total_log_prob = torch.add(high_log_prob, low_log_prob)
-        total_reward = -torch.add(high_reward, low_reward)        
+        total_reward = torch.add(high_reward, low_reward)        
 
         # batch size 갯수가 맞는지 확인
         # aa_index = 0

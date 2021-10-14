@@ -21,7 +21,7 @@ parser = argparse.ArgumentParser(description="CPP with RL")
 parser.add_argument('--size', default=145, help="number of nodes")
 parser.add_argument('--epoch', default= 10, help="number of epochs")
 parser.add_argument('--steps', default= 500, help="number of epochs")
-parser.add_argument('--batch_size', default=4, help="number of batch size")
+parser.add_argument('--batch_size', default=512, help="number of batch size")
 parser.add_argument('--val_size', default=100, help="number of validation samples") # 이게 굳이 필요한가?
 parser.add_argument('--lr', type=float, default=1e-4, help="learning rate")
 parser.add_argument('--n_cells', default=5, help='number of visiting cells')
@@ -47,8 +47,8 @@ eval_interval = int(args['eval_interval'])
 pp.pprint(args)
 
 # generate training data
-n_train_samples = 1000
-n_val_samples = 300
+n_train_samples = 50000
+n_val_samples = 1000
 print("---------------------------------------------")
 print("GENERATE DATA")
 train_tsp_generator = TSP(n_batch=n_train_samples, n_cells = n_cells, size = size, max_distance = max_distance, is_train= True)
@@ -128,9 +128,9 @@ if __name__=="__main__":
             high_mask = torch.zeros([B, n_cells], dtype = torch.int64).cuda()
             # ----------------------------------------------------------------------------------------------------------#
 
-            log_prob, reward, _, _ = model(X, high_mask = high_mask, low_mask = low_mask)                  
-            baseline = _baseline * beta + reward * (1.0 - beta)
-            advantage = reward - baseline
+            log_prob, cost, _, _ = model(X, high_mask = high_mask, low_mask = low_mask)                  
+            baseline = _baseline * beta + cost * (1.0 - beta)
+            advantage = cost - baseline
             _baseline = baseline.clone()
         
             loss = (advantage * log_prob).mean()                                                
@@ -142,6 +142,7 @@ if __name__=="__main__":
             opt_scheduler.step()
             
             # model evaluation
+            model.eval()
             if global_step !=0 and global_step % eval_interval == 0:
                 print("MODEL EVALUATION")                              
                 # generate test valid index
@@ -165,10 +166,10 @@ if __name__=="__main__":
                 test_high_mask = torch.zeros([B, n_cells], dtype = torch.int64).cuda()
                 # ----------------------------------------------------------------------------------------------------------#
                 # evaluate the performance 
-                _, test_reward, _, _ = model(test_X, high_mask = test_high_mask, low_mask = test_low_mask)  
-                test_reward = -test_reward.mean()
-                print("TEST REWARD of {}th step:{}".format(global_step, test_reward))
-                writer.add_scalar("Test reward", test_reward, global_step= global_step)                            
+                _, test_cost, _, _ = model(test_X, high_mask = test_high_mask, low_mask = test_low_mask)  
+                test_cost = test_cost.mean()
+                print("TEST Performance of {}th step:{}".format(global_step, test_cost))
+                writer.add_scalar("Test Distance", test_cost, global_step= global_step)                            
 
             # tensorboard 설정 
             if step!=0 and step % log_interval == 0:
@@ -186,18 +187,19 @@ if __name__=="__main__":
                     'model_state_dict': model.state_dict(),
                     'optimizer_state_dict': optimizer.state_dict(),
                     'loss': loss,
-                    'reward': -reward.mean()
+                    'cost': cost.mean()
                 }, config_path)
 
                 # write information in tensorboard            
                 writer.add_scalar("loss", loss, global_step= global_step)
-                writer.add_scalar("distance", -reward.mean(), global_step= global_step)
+                writer.add_scalar("distance", cost.mean(), global_step= global_step)
 
                 # write gradient information
                 for name, param in model.named_parameters():
                     writer.add_histogram(name, param.grad, global_step= global_step)
             global_step +=1
-            
+            model.train()
+
     writer.close()   
 
 

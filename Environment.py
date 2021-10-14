@@ -17,6 +17,7 @@ class Environment():
         # update states for local nodes
         if self.is_local is True:                        
             action_mask = action_mask.scatter(0, self.next_idx.data, 1)            
+            # scatter 함수는 특정 index의 위치에 원하는 value를 넣을 수 있다. 
             # action_mask[self.next_idx.data] =1 # 이렇게 하면 잘 안됌. 이유가 뭘까
 
             self.next_idx = self.next_idx.unsqueeze(1).repeat(1, self.n_hidden)
@@ -33,6 +34,6 @@ class Environment():
             # get the next node state              
             self.next_idx = self.next_idx.unsqueeze(1).unsqueeze(2).repeat(1, 1, self.n_hidden)
             self.next_node = torch.gather(self.batch_data, dim=1, index = self.next_idx)            
-        return action_mask
+        return action_mask    
+
     
-    # def calculate_distance(self):
