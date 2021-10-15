@@ -14,12 +14,12 @@ class Encoder(torch.nn.Module):
         self.low_attention = AttentionModule(
                                             n_heads = 8,
                                             n_hidden = n_hidden,
-                                            n_layers = 3
+                                            n_layers = 4
                                             )
         self.high_attention = AttentionModule(
                                             n_heads = 8,
                                             n_hidden = n_hidden,
-                                            n_layers = 3
+                                            n_layers = 4
                                             )
 
     def forward(self, batch_data, mask = None):
@@ -187,15 +187,6 @@ class Decoder(torch.nn.Module):
         high_log_prob = torch.sum(high_log_prob.clone(), dim=1)
         low_reward = torch.sum(low_reward.clone(), dim=1)
         low_log_prob = torch.sum(low_log_prob.clone(), dim=1)
-
-        # aa_index = 0
-        # sample = original_data[aa_index]        
-        # bb = high_action[aa_index]        
-        # print(sample)
-        # print(bb)
-        # print('----------------')
-        # for ss in low_action:            
-        #     print(ss[aa_index])
 
         return high_log_prob, low_log_prob, high_reward, low_reward, high_action, low_action
                 

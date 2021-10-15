@@ -20,14 +20,15 @@ parser = argparse.ArgumentParser(description="CPP with RL")
 parser.add_argument('--size', default=145, help="number of nodes")
 parser.add_argument('--epoch', default= 10, help="number of epochs")
 parser.add_argument('--steps', default= 500, help="number of epochs")
-parser.add_argument('--batch_size', default=216, help="number of batch size")
+parser.add_argument('--batch_size', default=256, help="number of batch size")
 parser.add_argument('--val_size', default=100, help="number of validation samples") # 이게 굳이 필요한가?
 parser.add_argument('--lr', type=float, default=1e-4, help="learning rate")
 parser.add_argument('--n_cells', default=5, help='number of visiting cells')
 parser.add_argument('--max_distance', default=20, help="maximum distance of nodes from the center of cell")
-parser.add_argument('--n_hidden', default=512, help="nuber of hidden nodes") # 512개를 사용하는 경우 성능이
+parser.add_argument('--n_hidden', default=256, help="nuber of hidden nodes") # 
 parser.add_argument('--log_interval', default=5, help="store model at every epoch")
 parser.add_argument('--eval_interval', default=50, help='update frequency')
+parser.add_argument('--log_dir', default='./log', type=str, help='directory for the tensorboard')
 args = vars(parser.parse_args())
 
 size = int(args['size'])
@@ -46,7 +47,7 @@ eval_interval = int(args['eval_interval'])
 pp.pprint(args)
 
 # generate training data
-n_train_samples = 30000
+n_train_samples = 10000
 n_val_samples = 1000
 print("---------------------------------------------")
 print("GENERATE DATA")
@@ -57,11 +58,11 @@ X_val = valid_tsp_generator.generate_data()
 print("FINISHED")
 
 # tensorboard 
-writer = SummaryWriter(log_dir='./log/V3')
+writer = SummaryWriter(log_dir='./log/V5')
 
 # define model
-low_model = Low_Decoder(n_embedding= n_hidden, n_hidden=n_hidden, C=10).cuda()
-high_model = HCPP(n_feature = 2, n_hidden= n_hidden, high_level= True, n_embedding= n_hidden, seq_len= n_cells, C = 10).cuda()
+low_model = Low_Decoder(n_embedding= n_hidden, n_hidden=n_hidden, C = 100).cuda()
+high_model = HCPP(n_feature = 2, n_hidden= n_hidden, high_level= True, n_embedding= n_hidden, seq_len= n_cells, C = 100).cuda()
 all_params = list(low_model.parameters()) + list(high_model.parameters())
 optimizer = torch.optim.Adam(all_params, lr = learning_rate)
 
@@ -136,7 +137,7 @@ if __name__=="__main__":
             # calculate advantage
             high_advantage = high_cost - baseline_high
             low_advantage = low_cost - baseline_low
-            
+
             # update baseline
             _baseline_high = baseline_high.clone()
             _baseline_low = baseline_low.clone()
@@ -188,7 +189,7 @@ if __name__=="__main__":
             if step!=0 and step % log_interval == 0:
                 print("SAVE MODEL")
                 dir_root = './model/HCPP'
-                file_name = "HCPP_V3"
+                file_name = "HCPP_V5"
                 param_path = dir_root +  "/" + file_name + ".param"
                 high_config_path = dir_root + "/" + 'high_' + file_name 
                 low_config_path = dir_root + "/" + 'low_' + file_name + '.config'
