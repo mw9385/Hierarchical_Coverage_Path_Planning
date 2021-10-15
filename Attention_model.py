@@ -64,13 +64,10 @@ class Decoder(torch.nn.Module):
         self.h_context_embed = nn.Linear(self.n_embedding, self.n_embedding)
         self.v_weight_embed = nn.Linear(2 * self.n_embedding, self.n_embedding)
         
-        # define low policy decoder
-        self.low_decoder = Low_Decoder(n_embedding = self.n_embedding, n_hidden= self.n_hidden, C = 10)
-
-    def forward(self, node_context, original_data, cell_context, high_mask, low_mask):        
+    def forward(self, node_context, original_data, cell_context, high_mask, low_mask, low_decoder):        
         self.original_data = original_data
         self.batch_size = cell_context.size(0)        
-        
+        self.low_decoder = low_decoder
         init_h = None
         h = None
 
@@ -191,11 +188,6 @@ class Decoder(torch.nn.Module):
         low_reward = torch.sum(low_reward.clone(), dim=1)
         low_log_prob = torch.sum(low_log_prob.clone(), dim=1)
 
-        # sum up the log_prob and rewards        
-        total_log_prob = torch.add(high_log_prob, low_log_prob)
-        total_reward = torch.add(high_reward, low_reward)        
-
-        # batch size 갯수가 맞는지 확인
         # aa_index = 0
         # sample = original_data[aa_index]        
         # bb = high_action[aa_index]        
@@ -205,7 +197,7 @@ class Decoder(torch.nn.Module):
         # for ss in low_action:            
         #     print(ss[aa_index])
 
-        return total_log_prob, total_reward, high_action, low_action
+        return high_log_prob, low_log_prob, high_reward, low_reward, high_action, low_action
                 
     def calculate_context(self, context_vector):
         return torch.mean(context_vector, dim=1)
@@ -312,15 +304,15 @@ class HCPP(torch.nn.Module):
                 n_hidden, 
                 high_level, 
                 n_embedding, 
-                seq_len, 
+                seq_len,                 
                 C):
         super(HCPP, self).__init__()
         self.h_encoder = Encoder(n_feature= n_feature, n_hidden= n_hidden, high_level= high_level)
-        self.h_decoder = Decoder(n_embedding= n_embedding, seq_len= seq_len, n_hidden= n_hidden, C = C)
+        self.h_decoder = Decoder(n_embedding= n_embedding, seq_len= seq_len, n_hidden= n_hidden, C = C)        
 
-    def forward(self, batch_data, high_mask, low_mask):     
+    def forward(self, batch_data, high_mask, low_mask, low_decoder):     
         node_embed, cell_embed, original_data = self.h_encoder(batch_data, mask = None)                  
-        log_prob, reward, high_action, low_action = self.h_decoder(node_embed, original_data, cell_embed, high_mask, low_mask)
-        return log_prob, reward, high_action, low_action
+        high_log_prob, low_log_prob, high_reward, low_reward, high_action, low_action = self.h_decoder(node_embed, original_data, cell_embed, high_mask, low_mask, low_decoder)
+        return high_log_prob, low_log_prob, high_reward, low_reward, high_action, low_action
 
 

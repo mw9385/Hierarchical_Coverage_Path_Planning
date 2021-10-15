@@ -6,11 +6,10 @@ import torch
 import torch.optim as optim
 import pprint as pp
 
-from torch.optim import lr_scheduler
 from tqdm import tqdm
 from generate_data import TSP
 from torch.utils.tensorboard import SummaryWriter
-from Attention_model import HCPP
+from Attention_model import HCPP, Low_Decoder
 
 # GPU check
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -21,12 +20,12 @@ parser = argparse.ArgumentParser(description="CPP with RL")
 parser.add_argument('--size', default=145, help="number of nodes")
 parser.add_argument('--epoch', default= 10, help="number of epochs")
 parser.add_argument('--steps', default= 500, help="number of epochs")
-parser.add_argument('--batch_size', default=512, help="number of batch size")
+parser.add_argument('--batch_size', default=216, help="number of batch size")
 parser.add_argument('--val_size', default=100, help="number of validation samples") # 이게 굳이 필요한가?
 parser.add_argument('--lr', type=float, default=1e-4, help="learning rate")
 parser.add_argument('--n_cells', default=5, help='number of visiting cells')
 parser.add_argument('--max_distance', default=20, help="maximum distance of nodes from the center of cell")
-parser.add_argument('--n_hidden', default=128, help="nuber of hidden nodes") # 512개를 사용하는 경우 성능이 좋지 못함
+parser.add_argument('--n_hidden', default=512, help="nuber of hidden nodes") # 512개를 사용하는 경우 성능이
 parser.add_argument('--log_interval', default=5, help="store model at every epoch")
 parser.add_argument('--eval_interval', default=50, help='update frequency')
 args = vars(parser.parse_args())
@@ -47,7 +46,7 @@ eval_interval = int(args['eval_interval'])
 pp.pprint(args)
 
 # generate training data
-n_train_samples = 50000
+n_train_samples = 30000
 n_val_samples = 1000
 print("---------------------------------------------")
 print("GENERATE DATA")
@@ -61,12 +60,11 @@ print("FINISHED")
 writer = SummaryWriter(log_dir='./log/V3')
 
 # define model
-model = HCPP(n_feature = 2, n_hidden= n_hidden, high_level= True, n_embedding= n_hidden, seq_len= n_cells, C = 10).cuda()
-optimizer = optim.Adam(model.parameters(), lr=learning_rate)
-lr_decay_step = 2500
-lr_decay_rate = 0.96
-opt_scheduler = lr_scheduler.MultiStepLR(optimizer, range(lr_decay_step, lr_decay_step*1000,
-                                                          lr_decay_step), gamma=lr_decay_rate)
+low_model = Low_Decoder(n_embedding= n_hidden, n_hidden=n_hidden, C=10).cuda()
+high_model = HCPP(n_feature = 2, n_hidden= n_hidden, high_level= True, n_embedding= n_hidden, seq_len= n_cells, C = 10).cuda()
+all_params = list(low_model.parameters()) + list(high_model.parameters())
+optimizer = torch.optim.Adam(all_params, lr = learning_rate)
+
 beta = 0.8
 
 if __name__=="__main__":
@@ -91,10 +89,11 @@ if __name__=="__main__":
     high_mask = torch.zeros([B, n_cells], dtype = torch.int64).cuda()
 
     # get log_prob and reward
-    base_log_prob, base_reward, _, _ = model(baseline_X, high_mask = high_mask, low_mask = low_mask)    
+    base_high_log_prob, base_low_log_prob, base_high_reward, base_low_reward, _, _ = high_model(baseline_X, high_mask = high_mask, low_mask = low_mask, low_decoder = low_model)    
 
     # define initial moving average
-    _baseline = base_reward.clone()    
+    _baseline_high = base_high_reward.clone()
+    _baseline_low = base_low_reward.clone()    
     print("FINISHED")
     # clear cache
     torch.cuda.empty_cache()
@@ -103,11 +102,13 @@ if __name__=="__main__":
     global_step = 0
     print("---------------------------------------------")
     print("START TRAINING")
-    model.train()
+    high_model.train()
+    low_model.train()
+
     for epoch in range(n_epoch):        
         for step in tqdm(range(steps)):    
             # set the optimizer zero gradient
-            optimizer.zero_grad()
+            optimizer.zero_grad()            
             # define state embedding layer
             batch_index = np.random.permutation(n_train_samples)
             batch_index = batch_index[:B]
@@ -128,21 +129,33 @@ if __name__=="__main__":
             high_mask = torch.zeros([B, n_cells], dtype = torch.int64).cuda()
             # ----------------------------------------------------------------------------------------------------------#
 
-            log_prob, cost, _, _ = model(X, high_mask = high_mask, low_mask = low_mask)                  
-            baseline = _baseline * beta + cost * (1.0 - beta)
-            advantage = cost - baseline
-            _baseline = baseline.clone()
-        
-            loss = (advantage * log_prob).mean()                                                
-            loss.backward()                                
-                                    
-            max_grad_norm = 1.0
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm, norm_type= 2)
-            optimizer.step()
-            opt_scheduler.step()
+            high_log_prob, low_log_prob, high_cost, low_cost, _, _ = high_model(X, high_mask = high_mask, low_mask = low_mask, low_decoder = low_model)                  
+            baseline_high = _baseline_high * beta + high_cost * (1.0 - beta)
+            baseline_low = _baseline_low * beta + low_cost * (1.0 - beta)
             
+            # calculate advantage
+            high_advantage = high_cost - baseline_high
+            low_advantage = low_cost - baseline_low
+            
+            # update baseline
+            _baseline_high = baseline_high.clone()
+            _baseline_low = baseline_low.clone()
+
+            # define loss function
+            high_loss = (high_advantage * high_log_prob).mean()                                
+            low_loss = (low_advantage * low_log_prob).mean()
+            loss = high_loss + low_loss
+            loss.backward()            
+                                                
+            max_grad_norm = 1.0
+            torch.nn.utils.clip_grad_norm_(high_model.parameters(), max_grad_norm, norm_type= 2)
+            torch.nn.utils.clip_grad_norm_(low_model.parameters(), max_grad_norm, norm_type= 2)
+            optimizer.step()
+            
+            total_cost = high_cost.mean().cpu() + low_cost.mean().cpu()
             # model evaluation
-            model.eval()
+            high_model.eval()
+            low_model.eval()
             if global_step !=0 and global_step % eval_interval == 0:
                 print("MODEL EVALUATION")                              
                 # generate test valid index
@@ -165,11 +178,11 @@ if __name__=="__main__":
                 # high policy mask
                 test_high_mask = torch.zeros([B, n_cells], dtype = torch.int64).cuda()
                 # ----------------------------------------------------------------------------------------------------------#
-                # evaluate the performance 
-                _, test_cost, _, _ = model(test_X, high_mask = test_high_mask, low_mask = test_low_mask)  
-                test_cost = test_cost.mean()
-                print("TEST Performance of {}th step:{}".format(global_step, test_cost))
-                writer.add_scalar("Test Distance", test_cost, global_step= global_step)                            
+                # evaluate the performance                 
+                _, _, test_high_cost, test_low_cost, _, _ = high_model(test_X, high_mask = test_high_mask, low_mask = test_low_mask, low_decoder = low_model)                                  
+                test_total_cost = test_high_cost.mean() + test_low_cost.mean()                
+                print("TEST Performance of {}th step:{}".format(global_step, test_total_cost))
+                writer.add_scalar("Test Distance", test_total_cost, global_step= global_step)                            
 
             # tensorboard 설정 
             if step!=0 and step % log_interval == 0:
@@ -177,28 +190,30 @@ if __name__=="__main__":
                 dir_root = './model/HCPP'
                 file_name = "HCPP_V3"
                 param_path = dir_root +  "/" + file_name + ".param"
-                config_path = dir_root + "/" + file_name + '.config'
+                high_config_path = dir_root + "/" + 'high_' + file_name 
+                low_config_path = dir_root + "/" + 'low_' + file_name + '.config'
 
                 # make model directory if is not exist
-                os.makedirs(dir_root, exist_ok=True)
-                # torch.save(model, model.state_dict(), config_path)  
+                os.makedirs(dir_root, exist_ok=True)    
+                # save high_model            
+                torch.save(high_model, high_config_path)
+                # save low_model
                 torch.save({
                     'epoch': epoch,
-                    'model_state_dict': model.state_dict(),
-                    'optimizer_state_dict': optimizer.state_dict(),
-                    'loss': loss,
-                    'cost': cost.mean()
-                }, config_path)
+                    'low_model_state_dict': low_model.state_dict()
+                }, low_config_path)
 
                 # write information in tensorboard            
                 writer.add_scalar("loss", loss, global_step= global_step)
-                writer.add_scalar("distance", cost.mean(), global_step= global_step)
+                writer.add_scalar("distance", total_cost, global_step= global_step)
 
                 # write gradient information
-                for name, param in model.named_parameters():
-                    writer.add_histogram(name, param.grad, global_step= global_step)
+                for (high_name, high_param), (low_name, low_param) in zip(high_model.named_parameters(), low_model.named_parameters()):
+                    writer.add_histogram(high_name, high_param.grad, global_step= global_step)
+                    writer.add_histogram(low_name, low_param.grad, global_step= global_step)
             global_step +=1
-            model.train()
+            high_model.train()
+            low_model.train()
 
     writer.close()   
 
