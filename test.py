@@ -15,8 +15,8 @@ print("Device status:{}".format(device))
 parser = argparse.ArgumentParser(description="CPP with RL")
 parser.add_argument('--size', default=145, help="number of nodes")
 parser.add_argument('--n_cells', default=5, help='number of visiting cells')
-parser.add_argument('--max_distance', default=50, help="maximum distance of nodes from the center of cell")
-parser.add_argument('--n_hidden', default=128, help="nuber of hidden nodes")
+parser.add_argument('--max_distance', default=20, help="maximum distance of nodes from the center of cell")
+parser.add_argument('--n_hidden', default=256, help="nuber of hidden nodes")
 args = vars(parser.parse_args())
 
 B = 10
@@ -34,9 +34,9 @@ X_test = test_tsp_generator.generate_data()
 print("FINISHED")
 
 # load model
-high_model_path = './model/HCPP/high_HCPP_V3'
-low_model_path = './model/HCPP/low_HCPP_V3.config'
-low_model = Low_Decoder(n_embedding=n_hidden, n_hidden=n_hidden, C=10).cuda
+high_model_path = './model/HCPP/high_HCPP_V2'
+low_model_path = './model/HCPP/low_HCPP_V2.config'
+low_model = Low_Decoder(n_embedding=n_hidden, n_hidden=n_hidden, C=10).cuda()
 low_model.load_state_dict(torch.load(low_model_path)['low_model_state_dict'])
 high_model = torch.load(high_model_path).cuda()
 
@@ -52,7 +52,7 @@ def plot_tsp(sample, high_mask, low_mask, batch_index):
     for i, high_index in enumerate(high_mask):                        
         current_cell = sample[high_index]          
         low_index = low_mask[i]
-        low_index = low_index[batch_index].cpu().numpy()
+        low_index = low_index[batch_index].cpu().numpy()        
         plt.scatter(current_cell[:,0], current_cell[:,1], s=300)
         for j in range(len(current_cell)):
             _low_index = np.where(low_index == j)[0][0]                     

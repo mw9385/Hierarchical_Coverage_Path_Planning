@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from Environment import Environment
-from module import Pointer, MultiHeadAttentionLayer, AttentionModule
+from module import Pointer, AttentionModule
 from torch.distributions import Categorical
 
 
@@ -14,12 +14,12 @@ class Encoder(torch.nn.Module):
         self.low_attention = AttentionModule(
                                             n_heads = 8,
                                             n_hidden = n_hidden,
-                                            n_layers = 4
+                                            n_layers = 3
                                             )
         self.high_attention = AttentionModule(
                                             n_heads = 8,
                                             n_hidden = n_hidden,
-                                            n_layers = 4
+                                            n_layers = 3
                                             )
 
     def forward(self, batch_data, mask = None):
@@ -99,15 +99,16 @@ class Decoder(torch.nn.Module):
         # depot을 0으로 바꾸면서 masking의 갯수가 문제가 생겼음... 
         for i in range(self.seq_len):            
             # we could add glimpse later                                
-            prob = self.high_pointer(query=query, target=cell_context, mask = high_mask)                   
+            logits = self.high_pointer(query=query, target=cell_context, mask = high_mask)       
+            _high_mask = high_mask.clone()
+            logits = torch.masked_fill(logits, _high_mask==1, float('-inf'))                                    
+            prob = torch.softmax(logits, dim=-1)
             node_distribtution = Categorical(prob)
-            idx = node_distribtution.sample() # idx size = [batch]            
-            
+            idx = node_distribtution.sample() # idx size = [batch]                        
             # for the home cell
             if i==0:
                 idx = torch.zeros([self.batch_size,], dtype = torch.int64).cuda()                
             _cell_log_prob = node_distribtution.log_prob(idx)
-
             # append high action
             high_action.append(idx)
 
@@ -240,14 +241,16 @@ class Low_Decoder(torch.nn.Module):
         last_node = None
         local_R = 0
         for i in range(seq_len): 
-            low_prob = self.low_pointer(query = low_query, target = low_cv, mask = mask)                     
+            low_logits = self.low_pointer(query = low_query, target = low_cv, mask = mask)   
+            _mask = mask.clone()
+            low_logits = torch.masked_fill(low_logits, _mask==1, float('-inf'))                                                
+            low_prob = torch.softmax(low_logits, dim=-1)                       
             low_node_distribution = Categorical(low_prob)
-            low_idx = low_node_distribution.sample()            
-            # change the initial mask               
+            low_idx = low_node_distribution.sample()                 
+            # change the initial mask              
             if i == 0 and id ==0:
-                low_idx = torch.zeros([1,], dtype=torch.int64).cuda()            
+                low_idx = torch.zeros([1,], dtype=torch.int64).cuda()   
             _low_log_prob = low_node_distribution.log_prob(low_idx)            
-            # print(_low_log_prob)
 
             # append the action and log_probability
             low_temp_idx.append(low_idx)

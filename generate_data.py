@@ -26,6 +26,8 @@ class TSP():
         self.tsp_vector = torch.tensor(())
 
         for j in range(self.n_batch):
+            if j % 1000 == 0:
+                print(j)
             _tsp_data = []
             _tsp_vector = torch.tensor(())
             n_rand_cell = torch.randperm(self.n_cells) + self.n_cells
