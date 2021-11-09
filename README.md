@@ -9,3 +9,4 @@
 - ~~Change the value of C in the pointer network. C value controls exploration and exploitation.~~ 별 차이 없음
 - __Give loss weight in high_loss value: 이렇게 하면 low model을 초기에 더 잘 학습 할 수 있을것이라 생각함.__ 변경해서 실행 중 
 - High model 과 low model을 나눠서 학습을 하기 시작했는데, low model이 수렴을 안하는 듯 한데 low model update 과정에 문제가 있는건가?
+- Hyperparameter of the low model is not learning anything...?
