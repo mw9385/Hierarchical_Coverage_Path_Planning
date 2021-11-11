@@ -20,7 +20,7 @@ parser = argparse.ArgumentParser(description="CPP with RL")
 parser.add_argument('--size', default=145, help="number of nodes")
 parser.add_argument('--epoch', default= 100, help="number of epochs")
 parser.add_argument('--steps', default= 2500, help="number of epochs")
-parser.add_argument('--batch_size', default=256, help="number of batch size")
+parser.add_argument('--batch_size', default=512, help="number of batch size")
 parser.add_argument('--val_size', default=100, help="number of validation samples") # 이게 굳이 필요한가?
 parser.add_argument('--lr', type=float, default=1e-4, help="learning rate")
 parser.add_argument('--n_cells', default=5, help='number of visiting cells')
@@ -29,7 +29,7 @@ parser.add_argument('--n_hidden', default=128, help="nuber of hidden nodes") #
 parser.add_argument('--log_interval', default=20, help="store model at every epoch")
 parser.add_argument('--eval_interval', default=50, help='update frequency')
 parser.add_argument('--log_dir', default='./log/V1', type=str, help='directory for the tensorboard')
-parser.add_argument('--warm_up_step', default=1000, help='warm up step for lower policy')
+parser.add_argument('--warm_up_step', default=5000, help='warm up step for lower policy')
 
 args = vars(parser.parse_args())
 
@@ -50,7 +50,7 @@ warm_up_step = int(args['warm_up_step'])
 pp.pprint(args)
 
 # generate training data
-n_train_samples = 1000
+n_train_samples = 500000
 n_val_samples = 1000
 print("---------------------------------------------")
 print("GENERATE DATA")
@@ -131,12 +131,11 @@ if __name__=="__main__":
             # define loss function                    
             high_loss = (high_advantage * high_log_prob).mean()
             low_loss = (low_advantage * low_log_prob).mean()            
-            
-            loss = high_loss + low_loss
-            # if global_step > warm_up_step:
-            #     loss = high_loss +  low_loss
-            # else:
-            #     loss = low_loss                        
+                        
+            if global_step > warm_up_step:
+                loss = high_loss +  low_loss
+            else:
+                loss = low_loss                        
             loss.backward()            
                                                 
             max_grad_norm = 1.0
