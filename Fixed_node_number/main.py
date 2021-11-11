@@ -28,7 +28,7 @@ parser.add_argument('--max_distance', default=20, help="maximum distance of node
 parser.add_argument('--n_hidden', default=128, help="nuber of hidden nodes") # 
 parser.add_argument('--log_interval', default=20, help="store model at every epoch")
 parser.add_argument('--eval_interval', default=50, help='update frequency')
-parser.add_argument('--log_dir', default='./log/test', type=str, help='directory for the tensorboard')
+parser.add_argument('--log_dir', default='./log/V1', type=str, help='directory for the tensorboard')
 parser.add_argument('--warm_up_step', default=1000, help='warm up step for lower policy')
 
 args = vars(parser.parse_args())
@@ -65,7 +65,7 @@ writer = SummaryWriter(log_dir=args['log_dir'])
 
 # define model
 low_model = Low_Decoder(n_embedding= n_hidden, n_hidden=n_hidden, C = 10).cuda()
-high_model = HCPP(n_feature = 2, n_hidden= n_hidden, n_embedding= n_hidden, seq_len= n_cells, C = 10).cuda()
+high_model = HCPP(n_feature = 2, n_hidden= n_hidden, n_embedding= n_hidden, C = 10).cuda()
 all_params = list(low_model.parameters()) + list(high_model.parameters())
 optimizer = torch.optim.Adam(all_params, lr = learning_rate)
 
@@ -172,7 +172,7 @@ if __name__=="__main__":
             if step!=0 and step % log_interval == 0:
                 print("SAVE MODEL")
                 dir_root = './model/HCPP'
-                file_name = "HCPP_test"
+                file_name = "HCPP_V1"
                 param_path = dir_root +  "/" + file_name + ".param"
                 high_config_path = dir_root + "/" + 'high_' + file_name
                 low_config_path = dir_root + "/" + 'low_' + file_name + '.config'
@@ -180,7 +180,7 @@ if __name__=="__main__":
                 # make model directory if is not exist
                 os.makedirs(dir_root, exist_ok=True)    
                 # save high_model            
-                torch.save(high_model, high_config_path)
+                torch.save(high_model, high_config_path)                
                 # save low_model
                 torch.save({
                     'epoch': epoch,

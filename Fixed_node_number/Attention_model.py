@@ -8,14 +8,14 @@ from torch.distributions import Categorical
 class Encoder(torch.nn.Module):
     def __init__(self, n_feature, n_hidden):
         super(Encoder, self).__init__()        
-
+        self.n_hidden = n_hidden
         self.embedding_x = nn.Linear(n_feature, n_hidden)                
         
-        # self.low_attention = AttentionModule(
-        #                                     n_heads = 8,
-        #                                     n_hidden = n_hidden,
-        #                                     n_layers = 3
-        #                                     )
+        self.low_attention = AttentionModule(
+                                            n_heads = 8,
+                                            n_hidden = n_hidden,
+                                            n_layers = 3
+                                            )
 
         self.high_attention = AttentionModule(
                                             n_heads = 8,
@@ -25,34 +25,26 @@ class Encoder(torch.nn.Module):
 
     def forward(self, batch_data, mask = None):
         self.batch_data = batch_data.cuda()
-        self.low_node = self.embedding_x(self.batch_data)
-        
-        # self.low_node = []
-        # for samples in batch_data:
-        #     _low_node = []
-        #     for sample in samples:                
-        #         x = self.embedding_x(sample.clone().cuda()).unsqueeze(0) # x_size = [1, num_nodes, n_hidden]                   
-        #         _low_node.append(self.low_attention(x))
-        #     _low_node = torch.stack(_low_node, 1)                       
-        #     self.low_node.append(_low_node.squeeze(0))            
-        # self.low_node = torch.stack(self.low_node, 1)
-        # self.low_node = torch.permute(self.low_node, (1, 2, 0 ,3))
-        # # self.low_node = torch.permute(self.low_node, (1, 0, 2 ,3))
+        self.seq_len = self.batch_data.size(1)
+        self.n_node = self.batch_data.size(2)
 
-        # cell embedding for high model        
-        self.high_node = self.embedding_x(self.batch_data)
-        self.high_node = torch.mean(self.high_node, dim=2)
-        self.high_node = self.high_attention(self.high_node)
-        # print(self.high_node.size())
+        # node embedding for low model
+        self.embedded_x = self.embedding_x(self.batch_data)  
+        _low_node = torch.reshape(self.embedded_x, [-1, self.seq_len, self.n_hidden])      
+        _low_node = self.low_attention(_low_node)
+        self.low_node = torch.reshape(_low_node, [-1, self.seq_len, self.n_node, self.n_hidden])
+    
+        # cell embedding for high model                
+        self.high_node = torch.mean(self.embedded_x, dim=2)  
+        self.high_node = self.high_attention(self.high_node)        
 
         return self.low_node, self.high_node, self.batch_data
 
 class Decoder(torch.nn.Module):
-    def __init__(self, n_embedding, seq_len, n_hidden, C = 10):
+    def __init__(self, n_embedding, n_hidden, C = 10):
         super(Decoder, self).__init__()
         self.n_embedding = n_embedding
-        self.n_hidden = n_hidden
-        self.seq_len = seq_len
+        self.n_hidden = n_hidden        
         self.C = C
         
         self.high_pointer = Pointer(self.n_embedding, self.n_hidden, self.C)        
@@ -65,6 +57,7 @@ class Decoder(torch.nn.Module):
         self.original_data = original_data
         self.batch_size = cell_context.size(0)        
         self.low_decoder = low_decoder
+        self.seq_len = self.original_data.size(1)
         init_h = None
         h = None
 
@@ -316,12 +309,11 @@ class HCPP(torch.nn.Module):
     def __init__(self, 
                 n_feature, 
                 n_hidden,                 
-                n_embedding, 
-                seq_len,                 
+                n_embedding,                                 
                 C):
         super(HCPP, self).__init__()
         self.h_encoder = Encoder(n_feature= n_feature, n_hidden= n_hidden)
-        self.h_decoder = Decoder(n_embedding= n_embedding, seq_len= seq_len, n_hidden= n_hidden, C = C)        
+        self.h_decoder = Decoder(n_embedding= n_embedding, n_hidden= n_hidden, C = C)        
 
     def forward(self, batch_data, high_mask, low_mask, low_decoder):     
         node_embed, cell_embed, original_data = self.h_encoder(batch_data, mask = None)                  
