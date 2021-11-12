@@ -81,7 +81,8 @@ class MultiHeadAttentionLayer(nn.Module):
         score = score/ math.sqrt(d_k) # scailing        
         if mask is not None:
             # tensor.masked_fill(mask_index, value): Fills the elements with value where mask is True
-            score = score.masked_fill(mask == 0, -1e9) 
+            # score = score.masked_fill(mask == 0, -1e9) 
+            score = score.masked_fill(mask == 1, -1e9) 
         out = F.softmax(score, dim = -1) # get the softmax score
         out = torch.matmul(out, value) # score x V
         return out

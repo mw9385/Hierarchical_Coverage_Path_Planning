@@ -58,6 +58,7 @@ class Decoder(torch.nn.Module):
         self.batch_size = cell_context.size(0)        
         self.low_decoder = low_decoder
         self.seq_len = self.original_data.size(1)
+        self.n_node = self.original_data.size(2)
         init_h = None
         h = None
 
@@ -105,9 +106,9 @@ class Decoder(torch.nn.Module):
             """
             For Low Model
             """
-            current_cell = torch.gather(node_context, 1, idx.unsqueeze(1).unsqueeze(2).unsqueeze(3).repeat(1, 1, self.seq_len, self.n_embedding))
-            original_cell = torch.gather(self.original_data.cuda(), 1, idx.unsqueeze(1).unsqueeze(2).unsqueeze(3).repeat(1, 1, self.seq_len, 2))
-            current_mask = torch.gather(low_mask, 1, idx.unsqueeze(1).unsqueeze(2).repeat(1, 1, self.seq_len))
+            current_cell = torch.gather(node_context, 1, idx.unsqueeze(1).unsqueeze(2).unsqueeze(3).repeat(1, 1, self.n_node, self.n_embedding))
+            original_cell = torch.gather(self.original_data.cuda(), 1, idx.unsqueeze(1).unsqueeze(2).unsqueeze(3).repeat(1, 1, self.n_node, 2))
+            current_mask = torch.gather(low_mask, 1, idx.unsqueeze(1).unsqueeze(2).repeat(1, 1, self.n_node))
             
             # resize
             current_cell = current_cell.squeeze(1) # batch * n_seq_len * n_embedding
@@ -150,8 +151,6 @@ class Decoder(torch.nn.Module):
             h = cell_context.gather(1, _idx).squeeze(1)
             h_rest = self.v_weight_embed(torch.cat([init_h, h], dim = -1)) # dim= -1 부분을 왜 이렇게 하는거지?
             query = h_bar + h_rest   
-        
-        
         
         # reshape the dimensions
         """
