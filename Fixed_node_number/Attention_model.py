@@ -1,12 +1,12 @@
 import torch
 import torch.nn as nn
 from Environment import Environment
-from module import Pointer, AttentionModule
+from module import Pointer, AttentionModule, Glimpse
 from torch.distributions import Categorical
 
 
 class Encoder(torch.nn.Module):
-    def __init__(self, n_feature, n_hidden):
+    def __init__(self, n_feature, n_hidden, n_layer):
         super(Encoder, self).__init__()        
         self.n_hidden = n_hidden
         self.embedding_x = nn.Linear(n_feature, n_hidden)                
@@ -14,13 +14,15 @@ class Encoder(torch.nn.Module):
         self.low_attention = AttentionModule(
                                             n_heads = 8,
                                             n_hidden = n_hidden,
-                                            n_layers = 3
+                                            feed_forward_hidden = 512,
+                                            n_layers = n_layer
                                             )
 
         self.high_attention = AttentionModule(
                                             n_heads = 8,
                                             n_hidden = n_hidden,
-                                            n_layers = 3
+                                            feed_forward_hidden = 512, 
+                                            n_layers = n_layer
                                             )
 
     def forward(self, batch_data, mask = None):
@@ -34,25 +36,34 @@ class Encoder(torch.nn.Module):
         _low_node = self.low_attention(_low_node)
         self.low_node = torch.reshape(_low_node, [-1, self.seq_len, self.n_node, self.n_hidden])
     
-        # cell embedding for high model                
-        self.high_node = torch.mean(self.embedded_x, dim=2)  
+        # cell embedding for high model     
+        # self.high_node = torch.mean(self.batch_data, dim = 2) 
+        # self.high_node = self.embedding_x(self.high_node)
+        """
+        embedding 하고 나서 mean을 취하는것과 
+        mean을 취하고 embedding 하는것의 차이는?
+        """
+        self.high_node = torch.mean(self.embedded_x, dim=2)
         self.high_node = self.high_attention(self.high_node)        
-
         return self.low_node, self.high_node, self.batch_data
 
 class Decoder(torch.nn.Module):
-    def __init__(self, n_embedding, n_hidden, C = 10):
+    def __init__(self, n_embedding, n_hidden, n_head, C = 10):
         super(Decoder, self).__init__()
         self.n_embedding = n_embedding
         self.n_hidden = n_hidden        
+        self.n_head = n_head
         self.C = C
-        
-        self.high_pointer = Pointer(self.n_embedding, self.n_hidden, self.C)        
+
+        # define initial parameters
         self.init_w = nn.Parameter(torch.Tensor(2 * self.n_embedding))
         self.init_w.data.uniform_(-1,1)        
         self.h_context_embed = nn.Linear(self.n_embedding, self.n_embedding)
         self.v_weight_embed = nn.Linear(2 * self.n_embedding, self.n_embedding)
-        
+
+        # define pointer
+        self.high_pointer = Pointer(self.n_embedding, self.n_hidden, self.C)        
+
     def forward(self, node_context, original_data, cell_context, high_mask, low_mask, low_decoder):        
         self.original_data = original_data
         self.batch_size = cell_context.size(0)        
@@ -86,12 +97,8 @@ class Decoder(torch.nn.Module):
             node_reward = []
             node_action = []
 
-            # we could add glimpse later                                
-            logits = self.high_pointer(query=query, target=cell_context, mask = high_mask)       
-            _high_mask = high_mask.clone()
-            logits = torch.masked_fill(logits, _high_mask==1, float('-inf'))                                    
-            prob = torch.softmax(logits, dim=-1)
-            node_distribtution = Categorical(prob)
+            logits = self.high_pointer(query=query, target=cell_context, mask = high_mask)                   
+            node_distribtution = Categorical(logits)
             idx = node_distribtution.sample() # idx size = [batch]                        
             # for the home cell
             if i==0:
@@ -117,20 +124,11 @@ class Decoder(torch.nn.Module):
                         
             for _ in range(self.seq_len):                
                 # calculate low_log_prob and low_action
-                _low_prob, _low_action, init_node, last_node, _reward = self.low_decoder(current_cell, original_cell, current_mask, i)
-                      
+                _low_prob, _low_action, _reward, init_node, last_node  = self.low_decoder(current_cell, original_cell, current_mask, i)
                 # append low elements into a list                                                
                 node_log_prob.append(_low_prob)
                 node_action.append(_low_action)
                 node_reward.append(_reward)
-
-            # reshape the init_node and last node
-            """
-            init_node: batch * 1 * n_feature --> batch * n_feature
-            last_node: batch * 1 * n_feature --> batch * n_feature
-            """
-            init_node = init_node.squeeze(1)
-            last_node = last_node.squeeze(1)
 
             if i > 0:        
                 # calculate cell distance    
@@ -175,16 +173,14 @@ class Decoder(torch.nn.Module):
         cell_reward = batch  
         cell_log_prob = batch
         """        
-        cell_reward = torch.sum(cell_reward.clone(), dim=1)
-        cell_log_prob = torch.sum(cell_log_prob.clone(), dim=1)
+        cell_reward = torch.sum(cell_reward.clone(), dim=-1)
+        cell_log_prob = torch.sum(cell_log_prob.clone(), dim=-1)
 
         # resize the node_reward and node_log_prob
         "[batch, n_cells, local_cells] --> [batch*n_cells, local_cells]"
-        node_reward = torch.reshape(node_reward, [-1, self.seq_len])
-        node_log_prob = torch.reshape(node_log_prob, [-1 , self.seq_len])
-        node_reward = torch.sum(node_reward.clone(), dim=1)
-        node_log_prob = torch.sum(node_log_prob.clone(), dim=1)
-
+        node_reward = torch.reshape(node_reward, [-1, 1])
+        node_log_prob = torch.reshape(node_log_prob, [-1, 1])   
+    
         return cell_log_prob, node_log_prob, cell_reward, node_reward, cell_action, node_action
                 
     def calculate_context(self, context_vector):
@@ -195,10 +191,11 @@ class Decoder(torch.nn.Module):
 
 
 class Low_Decoder(torch.nn.Module):
-    def __init__(self, n_embedding, n_hidden, C=10):
+    def __init__(self, n_embedding, n_hidden, n_head, C=10):
         super(Low_Decoder, self).__init__()
         self.n_embedding = n_embedding
         self.n_hidden = n_hidden
+        self.n_head = n_head
         self.C = C        
 
         # initialize parameters
@@ -208,7 +205,7 @@ class Low_Decoder(torch.nn.Module):
         self.low_v_weight_embed = nn.Linear(2 * self.n_embedding, self.n_embedding)
 
         # define pointer
-        self.low_pointer = Pointer(self.n_embedding, self.n_hidden, self.C)
+        self.low_pointer = Pointer(self.n_embedding, self.n_hidden, self.C)        
 
     def forward(self, low_context_vector, original_node, mask, id): 
         self.batch_size = low_context_vector.size(0)
@@ -240,18 +237,15 @@ class Low_Decoder(torch.nn.Module):
         last_node = None
 
         for i in range(seq_len): 
-            low_logits = self.low_pointer(query = low_query, target = low_cv, mask = mask)   
-            _mask = mask.clone()
-            low_logits = torch.masked_fill(low_logits, _mask==1, float('-inf'))                           
-            low_prob = torch.softmax(low_logits, dim=-1)                       
-            low_node_distribution = Categorical(low_prob)
-            low_idx = low_node_distribution.sample()   
+            low_logits = self.low_pointer(query = low_query, target = low_cv, mask = mask)               
+            low_node_distribution = Categorical(low_logits)
+            low_idx = low_node_distribution.sample() # idx_size = [batch]
             
             # change the initial mask              
             if i == 0 and id ==0:                      
                 low_idx = torch.zeros([self.batch_size,], dtype = torch.int64).cuda()
+            
             _low_log_prob = low_node_distribution.log_prob(low_idx)            
-
             # append the action and log_probability
             low_temp_idx.append(low_idx)
             low_temp_log_prob.append(_low_log_prob)
@@ -273,7 +267,7 @@ class Low_Decoder(torch.nn.Module):
 
             # calculate reward
             _current_node, _next_node, local_reward = self.calculate_distance(self.original_node, current_index= current_idx, next_index= next_idx) 
-            
+
             # update the current index            
             current_idx = next_idx.clone()
             
@@ -287,10 +281,13 @@ class Low_Decoder(torch.nn.Module):
                 last_node = _next_node.clone()   
 
         low_temp_idx = torch.stack(low_temp_idx, 1)
-        low_temp_log_prob = torch.stack(low_temp_log_prob, 1)     
-        low_temp_R = torch.stack(low_temp_R, 1)          
-        low_temp_R = torch.sum(low_temp_R, dim= 2)
-        return low_temp_log_prob, low_temp_idx, init_node, last_node, low_temp_R
+        low_temp_log_prob = torch.stack(low_temp_log_prob, 1)    
+        low_temp_R = torch.stack(low_temp_R, 1)        
+
+        # sum up log prob and reward
+        low_temp_log_prob = torch.sum(low_temp_log_prob, dim=-1)          
+        low_temp_R = torch.sum(low_temp_R, dim= -1)
+        return low_temp_log_prob, low_temp_idx, low_temp_R, init_node, last_node 
 
     def calculate_low_context(self, low_context_vector):
         return torch.mean(low_context_vector, dim = 1)
@@ -299,20 +296,21 @@ class Low_Decoder(torch.nn.Module):
         local_nodes = local_nodes.cuda()              
         current_index = current_index.unsqueeze(1).unsqueeze(2).repeat(1, 1, 2)
         next_index = next_index.unsqueeze(1).unsqueeze(2).repeat(1, 1, 2)
-        current_node = torch.gather(local_nodes, 1, current_index)        
-        next_node = torch.gather(local_nodes, 1, next_index)
-
-        return current_node, next_node, torch.norm(next_node - current_node, dim=2)
+        current_node = local_nodes.gather(1, current_index).squeeze(1)
+        next_node = local_nodes.gather(1, next_index).squeeze(1)  
+        return current_node, next_node, torch.norm(next_node - current_node, dim=1)
 
 class HCPP(torch.nn.Module):
     def __init__(self, 
                 n_feature, 
                 n_hidden,                 
                 n_embedding,                                 
+                n_head,
+                n_layer, 
                 C):
         super(HCPP, self).__init__()
-        self.h_encoder = Encoder(n_feature= n_feature, n_hidden= n_hidden)
-        self.h_decoder = Decoder(n_embedding= n_embedding, n_hidden= n_hidden, C = C)        
+        self.h_encoder = Encoder(n_feature= n_feature, n_hidden= n_hidden, n_layer=n_layer)
+        self.h_decoder = Decoder(n_embedding= n_embedding, n_hidden= n_hidden, n_head=n_head, C = C)        
 
     def forward(self, batch_data, high_mask, low_mask, low_decoder):     
         node_embed, cell_embed, original_data = self.h_encoder(batch_data, mask = None)                  

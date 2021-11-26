@@ -15,7 +15,7 @@ class TSP():
         if is_train:
             torch.manual_seed(1234)
         else:
-            torch.manual_seed(1234)    
+            torch.manual_seed(4321)    
         
     def generate_data(self):        
         # fix the number of points 
@@ -41,13 +41,12 @@ class TSP():
             for i in range(self.n_cells):
                 # create a multivariable distributions
                 m = tdist.multivariate_normal.MultivariateNormal(self.cell[j, i].clone(), torch.eye(2) * self.node_distance)
-                _sample = m.sample((n_node, ))
+                _sample = m.sample((n_node, ))                
                 _tsp_data.append(_sample / self.max_distance)                
-            _tsp_data = torch.stack(_tsp_data, 1)
+            _tsp_data = torch.stack(_tsp_data, 0)
             self.tsp_data.append(_tsp_data)                        
-        self.tsp_data = torch.stack(self.tsp_data, 1)     
-        self.tsp_data = torch.permute(self.tsp_data, (1, 2, 0, 3))
-        
+        self.tsp_data = torch.stack(self.tsp_data, 0)             
+        print("Checked the generated data size:{}".format(self.tsp_data.size()))
         return self.tsp_data
     
     def __len__(self):

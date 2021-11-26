@@ -2,6 +2,7 @@ import copy
 import math
 import torch
 from torch._C import dtype
+from math import sqrt
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -87,12 +88,65 @@ class MultiHeadAttentionLayer(nn.Module):
         out = torch.matmul(out, value) # score x V
         return out
 
+class Glimpse(nn.Module):
+    def __init__(self,
+                 input_size,
+                 hidden_size,
+                 n_head):
+        super(Glimpse, self).__init__()
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+        self.n_head = n_head
+        self.single_dim = hidden_size // n_head
+        self.c_div = 1.0 / math.sqrt(self.single_dim)
+        # Why should we take bias?
+
+        self.W_q = nn.Linear(self.input_size, self.hidden_size)
+        self.W_k = nn.Linear(self.input_size, self.hidden_size)
+        self.W_v = nn.Linear(self.input_size, self.hidden_size)
+        self.W_out = nn.Linear(self.hidden_size, self.input_size)
+
+        # No dropout or No Batch/Layernorm as mentioned at Wouter's paper
+
+    def forward(self, query, target, mask=None):
+        """
+        [Inputs]
+            query : FloatTensor with shape [batch x embedding_size]
+            target : FloatTensor with shape [batch x seq_len x embedding_size]
+            mask : BoolTensor with shape [batch_size x seq_len]
+        [Outputs]
+        """
+        batch_size, seq_len, _ = target.shape
+
+        q_c = self.W_q(query).reshape(batch_size, self.n_head, self.single_dim) # batch x head x head_dim
+
+        k = self.W_k(target).reshape(batch_size, seq_len, self.n_head, self.single_dim).permute(0, 2, 1, 3).contiguous() # batch x head x seq_len x head_dim
+        v = self.W_v(target).reshape(batch_size, seq_len, self.n_head, self.single_dim).permute(0, 2, 1, 3).contiguous() # batch x head x seq_len x head_dim
+        qk = torch.einsum("ijl,ijkl->ijk", [q_c, k]) * self.c_div # batch x head x seq_len
+
+        if mask is not None:
+            _mask = mask.unsqueeze(1).repeat(1, self.n_head, 1) # batch x head x seq_len
+            qk[_mask] = -100000.0
+
+        alpha = torch.softmax(qk, -1) # batch x head x seq_len
+        #print(alpha.shape, v.shape)
+        h = torch.einsum("ijk,ijkl->ijl", alpha, v) # batch x head x head_dim
+
+        if self.n_head == 1:
+            ret = h.reshape(batch_size, -1)
+            return alpha.squeeze(1), ret
+        else:
+            ret = self.W_out(h.reshape(batch_size, -1))
+            return alpha, ret
+
 
 class Multi_Layer(nn.Module):
-    def __init__(self, n_heads, n_hidden, bn=False):
+    def __init__(self, n_heads, n_hidden, feed_forward_hidden = 512, bn=False):
         super(Multi_Layer, self).__init__()
-        self.mha = MultiHeadAttentionLayer(n_hidden= n_hidden, n_head = n_heads)
-        self.out = nn.Sequential(nn.Linear(n_hidden, n_hidden), nn.ReLU(), nn.Linear(n_hidden, n_hidden))
+        # self.mha = MultiHeadAttentionLayer(n_hidden= n_hidden, n_head = n_heads)
+        # self.out = nn.Sequential(nn.Linear(n_hidden, n_hidden), nn.ReLU(), nn.Linear(n_hidden, n_hidden))
+        self.mha = torch.nn.MultiheadAttention(n_hidden, n_heads)
+        self.out = nn.Sequential(nn.Linear(n_hidden, feed_forward_hidden), nn.ReLU(), nn.Linear(feed_forward_hidden, n_hidden))
 
     def forward(self, x):
         """"
@@ -108,9 +162,9 @@ class Multi_Layer(nn.Module):
         return _2
 
 class AttentionModule(nn.Sequential):
-    def __init__(self, n_heads, n_hidden, n_layers = 3):
+    def __init__(self, n_heads, n_hidden, feed_forward_hidden, n_layers = 3):
         super(AttentionModule, self).__init__(
-            *(Multi_Layer(n_heads = n_heads, n_hidden=n_hidden) for _ in range(n_layers))
+            *(Multi_Layer(n_heads = n_heads, n_hidden=n_hidden, feed_forward_hidden= feed_forward_hidden) for _ in range(n_layers))
         )
 
 
