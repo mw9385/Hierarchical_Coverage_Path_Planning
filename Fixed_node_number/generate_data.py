@@ -19,17 +19,18 @@ class TSP():
         
     def generate_data(self):        
         # fix the number of points 
-        self.cell = np.zeros([self.n_batch, self.n_cells, 2])
+        self.cell = np.random.normal(0, self.max_distance, [self.n_batch, self.n_cells, 2])
+        # self.cell = np.zeros([self.n_batch, self.n_cells, 2])
         self.tsp_data = []
 
-        for sample in range(self.n_batch):                        
-            x_pos = np.random.permutation(self.max_distance)
-            y_pos = np.random.permutation(self.max_distance)            
-            x_pos = x_pos[:self.n_cells]
-            y_pos = y_pos[:self.n_cells]
+        # for sample in range(self.n_batch):                        
+        #     x_pos = np.random.permutation(self.max_distance)
+        #     y_pos = np.random.permutation(self.max_distance)            
+        #     x_pos = x_pos[:self.n_cells]
+        #     y_pos = y_pos[:self.n_cells]
         
-            self.cell[sample, :, 0] = x_pos
-            self.cell[sample, :, 1] = y_pos            
+        #     self.cell[sample, :, 0] = x_pos
+        #     self.cell[sample, :, 1] = y_pos            
         # numpy에서 np.float 64는 pytorch에서 double로 인식된다. 따라서 이를 해결하기 위해 마지막에 .float()를 넣어준다.
         self.cell = torch.from_numpy(self.cell).float()
 
