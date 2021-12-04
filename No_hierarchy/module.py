@@ -31,7 +31,7 @@ class Pointer(nn.Module):
         k = self.W_k(target) # key size = [batch, seq_len, n_hidden]
         # v = self.W_v(target) # value size = [batch, seq_len, n_hidden]
         qk = torch.einsum("ik, ijk -> ij", [q,k]) # qk size = [batch, seq_len]
-        qk = self.C * torch.tanh(qk) # qk size = [batch, seq_len]    
+        qk = self.C * torch.tanh(qk) # qk size = [batch, seq_len]                
         if mask is not None:                    
             qk = torch.masked_fill(qk, mask==1, -100000.0)
             # qk.masked_fill(mask==1, -10000) # 이렇게 하면 안되는데 이유가 뭐지?                 
@@ -142,9 +142,8 @@ class Glimpse(nn.Module):
 
 class Multi_Layer(nn.Module):
     def __init__(self, n_heads, n_hidden, feed_forward_hidden = 512, bn=False):
-        super(Multi_Layer, self).__init__()
-        self.mha = torch.nn.MultiheadAttention(n_hidden, n_heads)        
-        # self.mha = MultiHeadAttentionLayer(n_hidden= n_hidden, n_head = n_heads)
+        super(Multi_Layer, self).__init__()        
+        self.mha = torch.nn.MultiheadAttention(n_hidden, n_heads)
         self.out = nn.Sequential(nn.Linear(n_hidden, feed_forward_hidden), nn.ReLU(), nn.Linear(feed_forward_hidden, n_hidden))
 
     def forward(self, x):
