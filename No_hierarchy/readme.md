@@ -5,4 +5,4 @@ code with no hierarchies to check feasibility
 high policy의 input으로 low policy의 마지막점에 대한 정보와 cell 정보를 종합적으로 주어야 적절한 입구 위치를 찾을 수 있을것이라 생각됨.  
 high policy input: mean value만 들어가는데 이걸 low policy 정보를 넣을 수 없을까..?
 
-local policy의 입력값으로 $ \n_{1} $
+local policy의 입력값으로 $$ \[ p_{k}^{c_{t}}, p_{1:k}^{c_{t+1}}, p_{1}^{c_{t+2}}  \] $$
