@@ -7,3 +7,8 @@ high policy input: mean value만 들어가는데 이걸 low policy 정보를 넣
 
 local policy 입력값: [이전 cell의 마지막 노드, 현재 cell 정보, 다음 cell의 처음 node 정보]
 # local policy의 입력값으로 $ p_{k}^{c_{t}}, p_{1:k}^{c_{t+1}}, p_{1}^{c_{t+2}} $
+
+### 문제점
+#### 1. state normalization이 제대로 되지 않으면 성능이 나오지 않는다.
+####  - 잘 되는 학습 환경에서 state scale을 굉장히 크게 해서 학습했더니 잘 안됨
+#### 2. Reward 
