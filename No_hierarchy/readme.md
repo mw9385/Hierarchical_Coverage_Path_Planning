@@ -11,4 +11,4 @@ local policy 입력값: [이전 cell의 마지막 노드, 현재 cell 정보, �
 ### 문제점
 #### 1. state normalization이 제대로 되지 않으면 성능이 나오지 않는다.
 ####  - 잘 되는 학습 환경에서 state scale을 굉장히 크게 해서 학습했더니 잘 안됨
-#### 2. Reward 
+#### 2. Reward 값을 음수로 바꿔서 학습
