@@ -24,6 +24,7 @@ n_nodes = int(args['n_nodes'])
 n_hidden = int(args['n_hidden'])
 
 # generate training data
+# If you want to test the model with the generated test environment, activate this area.
 # n_test_samples = 1000
 # print("---------------------------------------------")
 # print("GENERATE DATA")
@@ -42,25 +43,7 @@ def plot_tsp(sample, high_mask, test_file_name, map_order, test_map):
     plt.imshow(test_map, cmap='Greys')
     plt.grid()
 
-    R = 0
-    # plt.scatter(sample[:, 0], sample[:, 1])
-    # for i, high_index in enumerate(high_mask): 
-    #     points = sample[high_index] * 20.0
-    #     if i == 0:
-    #         plt.text(points[0], points[1], 'depot', fontsize=10, label='depot', color='red')
-    #     else:
-    #         plt.scatter(points[0], points[1], s=10)
-    #         plt.plot([_points[0], points[0]], [_points[1], points[1]], color='red')
-    #         plt.text(points[0], points[1], i, fontsize = 10)
-    #         _reward = calculate_distance(_points, points)
-    #         R +=_reward
-    #     _points = copy.deepcopy(points)
-    #     plt.pause(0.01)
-    # plt.title('Total distance:{}'.format(R))    
-    # plt.show(block = False)
-    # plt.savefig(test_file_name + 'route_' + str(map_order), bbox_inches = 'tight', dpi=1200)
-    # plt.close('all')
-    
+    R = 0       
     for i, high_index in enumerate(high_mask): 
         points = sample[high_index] * 20.0
         if i == 0:
@@ -86,20 +69,13 @@ if __name__=="__main__":
     # load test map
     for i in range(20):
         map_order = i
+        # load test ith test map
+        # If you want to test the model with the generated test environment, deactivate this area.       
         test_file_name = './test_performance/mine_mapping/'
-
         test_map = np.genfromtxt(f'./map/map_idx' + str(map_order) + '.csv', delimiter=',')
-        # plt.figure()
-        # plt.imshow(test_map)
-        # plt.grid()
-        # plt.show(block=False)
-        # plt.savefig(test_file_name + 'original_' + str(map_order), bbox_inches = 'tight', dpi = 1200)
-        # plt.close('all')
-
         x_position = np.where(test_map==1)[0]
         y_position = np.where(test_map==1)[1]    
         n_points = len(x_position)
-
         new_position = np.zeros([n_points, 2])
         for i in range(n_points):
             new_position[i, 0]= x_position[i] / 20.0
@@ -120,8 +96,7 @@ if __name__=="__main__":
         [high_action]: batch x n_cells / type: tensor
         [low action]: n_cells x batch x number of local nodes /type: list
         """    
-
-        # visualization                 
+        # If you want to test the model with the generated test environment, activate this area.       
         # random_batch_index = np.random.randint(B)
         # sample = X_test[random_batch_index]
         # sample_high_action = high_action[random_batch_index]     
