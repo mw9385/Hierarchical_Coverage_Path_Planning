@@ -22,17 +22,17 @@ class Encoder(torch.nn.Module):
 
     def forward(self, batch_data, mask = None):    
         # cell embedding for high model        
-        self.high_node = torch.tensor(()).cuda()
-        self.original_node = torch.tensor(()).cuda()
+        self.high_node = []
+        self.original_node = []
         for index, batch_sample in enumerate(batch_data): 
             # data normalization
             A,B,C,D = batch_sample.size()
             batch_sample = batch_sample.reshape([A, B, C * D]).cuda()
-            high_node = self.embedding_x(batch_sample.type(torch.float32).cuda() / 70.0)             
+            high_node = self.embedding_x(batch_sample.type(torch.float32).cuda() / 70.0) 
             high_node = self.high_attention(high_node) # size = [4 * n_cells, n_feature, n_hidden] 
-            self.high_node = torch.cat([self.high_node, high_node], dim=1)            
-            self.original_node = torch.cat([self.original_node, batch_sample], dim=1)
-        return self.high_node.squeeze(0), self.original_node.squeeze(0)
+            self.high_node.append(high_node)
+            self.original_node.append(batch_sample)
+        return self.high_node, self.original_node
 
 class Decoder(torch.nn.Module):
     def __init__(self, n_embedding, n_hidden, n_head, C = 10):
@@ -55,36 +55,35 @@ class Decoder(torch.nn.Module):
 
         init_h = None
         h = None
-        pos = 0  
         cell_log_prob, cell_reward, cell_action = [], [], []
         for index, item in enumerate(num_cell):
             # get the current cell embedding values
-            current_cell_embed = cell_embed[pos: pos + 4 * item, :].clone()
-            current_cell = original_node[pos: pos + 4 * item, :].clone()
+            current_cell_embed = cell_embed[index].clone()
+            current_cell = original_node[index].clone()
             current_costs = costs[index].cuda()
-            pos = 4 * item
             # calculate query
-            h_mean = current_cell_embed.unsqueeze(0).mean(1) # batch * 1 * embedding_size            
+            h_mean = current_cell_embed.mean(1) # batch * 1 * embedding_size                                                
             h_bar = self.h_context_embed(h_mean) # batch * 1 * embedding_size
-            h_rest = self.v_weight_embed(self.init_w) # 1 * embeddig_size
-            query = h_bar + h_rest # batch * embedding_size
+            h_rest = self.v_weight_embed(self.init_w) # 1 * embeddig_size            
+            query = h_bar + h_rest # batch * embedding_size            
             # set the high environment
-            self.high_environment = Environment(batch_data = current_cell_embed.unsqueeze(0))    
-            
+            self.high_environment = Environment(batch_data = current_cell_embed)    
             # define action masking
             high_mask = torch.zeros([1, 4 * item], dtype= torch.int64).cuda()
-            # high_mask[:4, :] = 1
+            high_mask[:, :4] = 1
             # initialize cell log_prob and cell reward                
             temp_log_prob = []
             temp_reward = []        
             temp_action = []
             for i in range(item):  
                 # calculate logits from pointer and get node index
-                logits = self.high_pointer(query=query, target=current_cell_embed.unsqueeze(0), mask = high_mask)                 
+                logits = self.high_pointer(query=query, target=current_cell_embed, mask = high_mask)                                 
                 node_distribtution = Categorical(logits)
                 idx = node_distribtution.sample()
+                if i == 0:
+                    idx = torch.argmin(current_costs[:,:4])
+                    idx = idx.unsqueeze(0)
                 _cell_log_prob = node_distribtution.log_prob(idx)   
-                
                 # append action and log probability
                 temp_action.append(idx)
                 temp_log_prob.append(_cell_log_prob)
@@ -96,18 +95,16 @@ class Decoder(torch.nn.Module):
                 if i > 0:
                     maze = map[index]                    
                     maze = maze.tolist()
-                    start_pt = current_cell.gather(0, st_idx.unsqueeze(0).repeat(1,4))
-                    end_pt = current_cell.gather(0, idx.unsqueeze(0).repeat(1,4)) 
-                    spt = start_pt[:, 2:]
-                    ept = end_pt[:, :2]
-                    external_reward = torch.norm(ept - spt, dim=1).cuda()                    
+                    start_pt = current_cell.gather(1, st_idx.unsqueeze(1).unsqueeze(2).repeat(1,1,4))
+                    end_pt = current_cell.gather(1, idx.unsqueeze(1).unsqueeze(2).repeat(1,1,4)) 
+                    spt = start_pt[:, :, 2:]
+                    ept = end_pt[:, :, :2]
+                    external_reward = torch.norm(ept.squeeze(0) - spt.squeeze(0), dim=1).cuda()
                     internal_reward = current_costs[:, st_idx] + current_costs[:, idx]
-                    reward = external_reward + internal_reward
+                    reward = (external_reward + internal_reward) / 70.0
                     temp_reward.append(reward)
-
                 st_idx = idx.clone()
-
-                _idx = idx.unsqueeze(1).repeat(1, self.n_embedding) # torch.gather를 사용하기 위해 차원을 맞춰줌
+                _idx = idx.unsqueeze(1).unsqueeze(2).repeat(1, 1, self.n_embedding) # torch.gather를 사용하기 위해 차원을 맞춰줌
                 if init_h is None:
                     init_h = current_cell_embed.gather(1, _idx).squeeze(1)
                 h = current_cell_embed.gather(1, _idx).squeeze(1)
@@ -134,7 +131,6 @@ class Decoder(torch.nn.Module):
         """
         cell_reward = torch.stack(cell_reward, dim=0)
         cell_log_prob = torch.stack(cell_log_prob, dim = 0)
-
         return cell_log_prob, cell_reward, cell_action                    
 
 # define total model here

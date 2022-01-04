@@ -1,12 +1,7 @@
 import argparse
 import os
-import copy
-import numpy as np
-from numpy.random import shuffle
 import torch
-import torch.optim as optim
 import pprint as pp
-import matplotlib.pyplot as plt
 import json
 
 from tqdm import tqdm
@@ -23,7 +18,7 @@ print("Device status:{}".format(device))
 # main
 parser = argparse.ArgumentParser(description="CPP with RL")
 parser.add_argument('--epoch', default= 100, help="number of epochs")
-parser.add_argument('--steps', default= 2500, help="number of epochs")
+parser.add_argument('--steps', default= 100, help="number of epochs")
 parser.add_argument('--batch_size', default=512, help="number of batch size")
 parser.add_argument('--n_head', default=8, help="number of heads for multi-head attention")
 parser.add_argument('--val_size', default=100, help="number of validation samples") # 이게 굳이 필요한가?
@@ -31,8 +26,8 @@ parser.add_argument('--beta', type=float, default=0.9, help="beta")
 parser.add_argument('--lr', type=float, default=1e-4, help="learning rate")
 parser.add_argument('--n_nodes', default=9, help='number of visiting nodes')
 parser.add_argument('--n_hidden', default=128, help="nuber of hidden nodes") # 
-parser.add_argument('--log_interval', default=500, help="store model at every epoch")
-parser.add_argument('--eval_interval', default=500, help='update frequency')
+parser.add_argument('--log_interval', default=20, help="store model at every epoch")
+parser.add_argument('--eval_interval', default=20, help='update frequency')
 parser.add_argument('--log_dir', default='./log/V1', type=str, help='directory for the tensorboard')
 parser.add_argument('--file_name', default='HCPP_V1', help='file directory')
 parser.add_argument('--test_file_name', default='test_performance/V1/', help='test_file directory')
@@ -60,7 +55,7 @@ pp.pprint(args)
 
 # generate training data
 n_train_samples = 10000
-n_val_samples = 5000
+n_val_samples = 1000
 print("---------------------------------------------")
 print("GENERATE DATA")
 train_generator = CPPDataset(map_dir='Decomposed data/', pnc_dir='Points and costs/', transform=None)
@@ -99,7 +94,7 @@ if __name__=="__main__":
     # get log_prob and reward
     base_high_log_prob, base_high_reward, _ = high_model(baseline_map, baseline_num_cells, baseline_points, baseline_costs)    
     # define initial moving average
-    _baseline_high = base_high_reward.clone()    
+    baseline_high = base_high_reward.clone()    
     print("FINISHED")
     # clear cache
     torch.cuda.empty_cache()
@@ -118,12 +113,10 @@ if __name__=="__main__":
             train_costs = sample_batch[3]
             
             high_log_prob, high_cost, high_action = high_model(train_map, train_num_cells, train_points, train_costs)
-            baseline_high = _baseline_high * beta + high_cost * (1.0 - beta)   
+            baseline_high = baseline_high * beta + high_cost * (1.0 - beta)   
             # calculate advantage
             high_advantage = high_cost - baseline_high            
-            # update baseline
-            _baseline_high = baseline_high.clone()            
-            # define loss function                    
+            # define loss function     
             high_loss = (high_advantage * high_log_prob).mean()                                                          
 
             # set the optimizer zero gradient
