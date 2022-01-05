@@ -1,5 +1,7 @@
 import argparse
 import os
+# os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
+# os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 import torch
 import pprint as pp
 import json
@@ -90,7 +92,6 @@ if __name__=="__main__":
         baseline_num_cells = sample_batch[1]
         baseline_points = sample_batch[2]
         baseline_costs = sample_batch[3]
-    
     # get log_prob and reward
     base_high_log_prob, base_high_reward, _ = high_model(baseline_map, baseline_num_cells, baseline_points, baseline_costs)    
     # define initial moving average
@@ -111,14 +112,12 @@ if __name__=="__main__":
             train_num_cells = sample_batch[1]
             train_points = sample_batch[2]
             train_costs = sample_batch[3]
-            
             high_log_prob, high_cost, high_action = high_model(train_map, train_num_cells, train_points, train_costs)
             baseline_high = baseline_high * beta + high_cost * (1.0 - beta)   
             # calculate advantage
             high_advantage = high_cost - baseline_high            
             # define loss function     
             high_loss = (high_advantage * high_log_prob).mean()                                                          
-
             # set the optimizer zero gradient
             optimizer.zero_grad()   
             high_loss.backward()                                                            
