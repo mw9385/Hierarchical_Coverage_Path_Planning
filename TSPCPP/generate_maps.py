@@ -110,24 +110,29 @@ class Env(gym.Env):
         else:
             rand_y = self.np_random.randint(5)            
 
-        self.start_position = np.array([rand_x, rand_y])
-        rand_ox = self.np_random.randint(-10, 10, 5)
-        rand_oy = self.np_random.randint(-10, 10, 5)
-        ox = [
-            0.0, 
-            10.0 + rand_ox[0], 
-            20.0 + rand_ox[1], 
-            30.0 + rand_ox[2], 
-            40.0 + rand_ox[3], 
-            10.0 +rand_ox[4], 
-            0.0]
-        oy = [0.0, 
-        -20.0 + rand_oy[0], 
-        0.0 + rand_oy[1], 
-        30.0 + rand_oy[2], 
-        40.0+ rand_oy[3] , 
-        45.0 + rand_oy[4], 
-        0.0]  
+        self.start_position = np.array([rand_x, rand_y])        
+        rand_int = self.np_random.randint(3)
+        if rand_int == 0:
+            rand_ox = self.np_random.randint(-10, 10, 7)
+            rand_oy = self.np_random.randint(-10, 10, 7)
+            ox = np.array([0.0, 20.0, 40.0, 90.0, 100.0, 40.0, 0.0]) + rand_ox
+            oy = np.array([0.0, -20.0, 0.0, 30.0, 60.0, 80.0, 0.0]) + rand_oy
+            ox = ox.tolist()
+            oy = oy.tolist()
+        elif rand_int == 1:
+            rand_ox = self.np_random.randint(-10, 10, 5)
+            rand_oy = self.np_random.randint(-10, 10, 5)
+            ox = np.array([0.0, 50.0, 50.0, 0.0, 0.0]) + rand_ox
+            oy = np.array([0.0, 0.0, 30.0, 30.0, 0.0]) + rand_oy
+            ox = ox.tolist()
+            oy = oy.tolist()
+        else:
+            rand_ox = self.np_random.randint(-10, 10, 7)
+            rand_oy = self.np_random.randint(-10, 10, 7)
+            ox = np.array([0.0, 20.0, 50.0, 80.0, 70.0, 40.0, 0.0]) + rand_ox
+            oy = np.array([0.0, -80.0, 0.0, 30.0, 60.0, 80.0, 0.0]) + rand_oy
+            ox = ox.tolist()
+            oy = oy.tolist()
         
         self.grid_map = self.setup_grid_map(ox, oy, resolution = 1.0)
         self.grid_data = self.grid_map.get_grid_map()        
@@ -139,18 +144,17 @@ class Env(gym.Env):
         return img
 
 if __name__=="__main__":    
-    env = Env(width = 70, height = 70)
+    env = Env(width = 130, height = 130)
     env.seed(100)    
     fig = plt.figure(figsize = (10,8))    
-    e = 0
-    map_num = 10000
+    e = 0    
 
-    for j in range(10000,12800):
+    for j in range(12800):
         observation = env.reset()  
         for step in range(1):        
             temp = observation['map_info']
             temp = temp * (-1) + 1
-            temp = np.reshape(temp, [70, 70])
+            temp = np.reshape(temp, [130, 130])
             # turn off the displaying
             plt.ioff()
             plt.imshow(temp, cmap=plt.cm.gray)
@@ -158,10 +162,9 @@ if __name__=="__main__":
             # plt.show(block=False)    
 
             # save figure 
-            plt.savefig('./Training maps/map_' + str(map_num) + '.jpg', bbox_inches = 'tight', dpi=600)            
+            plt.savefig('./Training maps/map_' + str(j) + '.jpg', bbox_inches = 'tight', dpi=600)            
             plt.close('all')
 
-            map_num +=1
                 
         
 
