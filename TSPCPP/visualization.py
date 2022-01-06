@@ -31,6 +31,7 @@ def show_paths(image, num_cells, costs, points, action, steps):
         # connect the previous goals and start points        
         if i > 0:
             plt.plot([_g[0], st[0]], [_g[1], st[1]], color='red', linewidth=1.5)
+            plt.arrow(_g[0], _g[1], (st[0] - _g[0])*0.9, (st[1] - _g[1])*0.9, width=0.4, color='red')
         # update the previous node
         _g = copy.deepcopy(g)
         plt.pause(0.01)        
