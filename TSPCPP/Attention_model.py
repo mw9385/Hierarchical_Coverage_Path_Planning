@@ -11,7 +11,7 @@ class Encoder(torch.nn.Module):
         super(Encoder, self).__init__()        
         self.n_hidden = n_hidden
         self.n_feature = n_feature
-        self.max_length = 100
+        self.max_length = 200
         self.embedding_x = nn.Linear(n_feature, n_hidden)                        
         self.high_node = []
         self.high_attention = AttentionModule(
@@ -46,7 +46,7 @@ class Decoder(torch.nn.Module):
         self.n_hidden = n_hidden        
         self.n_head = n_head
         self.C = C
-        self.max_length = 100
+        self.max_length = 200
 
         # define initial parameters
         self.init_w = nn.Parameter(torch.Tensor(2 * self.n_embedding))
@@ -92,7 +92,7 @@ class Decoder(torch.nn.Module):
             node_distribtution = Categorical(logits)
             idx = node_distribtution.sample()
             if i == 0:
-                idx = torch.argmin(costs[:, :4], dim=1)                     
+                idx = torch.ones([self.n_batch], dtype=torch.int64).cuda() * 2
             _cell_log_prob = node_distribtution.log_prob(idx)
 
             # change the log probability into 0 if summed mask is equal to sequence length            
