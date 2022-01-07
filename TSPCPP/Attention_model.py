@@ -7,11 +7,12 @@ from torch.distributions import Categorical
 from A_star import *
 
 class Encoder(torch.nn.Module):
-    def __init__(self, n_feature, n_hidden):
+    def __init__(self, n_feature, n_hidden, scaling, max_length):
         super(Encoder, self).__init__()        
         self.n_hidden = n_hidden
         self.n_feature = n_feature
-        self.max_length = 200
+        self.max_length = max_length
+        self.scaling = scaling
         self.embedding_x = nn.Linear(n_feature, n_hidden)                        
         self.high_node = []
         self.high_attention = AttentionModule(
@@ -31,7 +32,7 @@ class Encoder(torch.nn.Module):
             # data normalization
             A,B,C,D = batch_sample.size()
             batch_sample = batch_sample.reshape([A, B, C * D]).cuda()
-            high_node = self.embedding_x(batch_sample.type(torch.float32).cuda() / 70.0) 
+            high_node = self.embedding_x(batch_sample.type(torch.float32).cuda() / self.scaling) 
             high_node = self.high_attention(high_node) # size = [4 * n_cells, n_feature, n_hidden]             
             self.high_node[index, :B, :] = high_node
             self.original_node[index, :B, :] = batch_sample
@@ -40,13 +41,13 @@ class Encoder(torch.nn.Module):
 
 # define decoder
 class Decoder(torch.nn.Module):
-    def __init__(self, n_embedding, n_hidden, n_feature, n_head, C = 10):
+    def __init__(self, n_embedding, n_hidden, n_feature, n_head, C, max_length):
         super(Decoder, self).__init__()
         self.n_embedding = n_embedding
         self.n_hidden = n_hidden        
         self.n_head = n_head
-        self.C = C
-        self.max_length = 200
+        self.C = 10
+        self.max_length = max_length
 
         # define initial parameters
         self.init_w = nn.Parameter(torch.Tensor(2 * self.n_embedding))
@@ -92,6 +93,7 @@ class Decoder(torch.nn.Module):
             node_distribtution = Categorical(logits)
             idx = node_distribtution.sample()
             if i == 0:
+                # 시작하는 위치를 고정함
                 idx = torch.ones([self.n_batch], dtype=torch.int64).cuda() * 2
             _cell_log_prob = node_distribtution.log_prob(idx)
 
@@ -152,10 +154,12 @@ class HCPP(torch.nn.Module):
                 n_hidden,                 
                 n_embedding,                                 
                 n_head,
-                C):
+                C,
+                scaling,
+                max_length):
         super(HCPP, self).__init__()
-        self.h_encoder = Encoder(n_feature= n_feature, n_hidden= n_hidden)
-        self.h_decoder = Decoder(n_embedding= n_embedding, n_hidden= n_hidden, n_feature=n_feature, n_head=n_head, C = C)        
+        self.h_encoder = Encoder(n_feature= n_feature, n_hidden= n_hidden, scaling = scaling, max_length = max_length)
+        self.h_decoder = Decoder(n_embedding= n_embedding, n_hidden= n_hidden, n_feature=n_feature, n_head=n_head, C = C, max_length=max_length)        
 
     def forward(self, map, num_cell, points, costs):     
         high_node, original_node, batch_costs = self.h_encoder(points, costs, mask = None)                          
