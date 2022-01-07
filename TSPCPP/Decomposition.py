@@ -76,8 +76,8 @@ def Boustrophedon_Cellular_Decomposition(test_case) :
         
         return cells
 
-    image = Image.open("./Training maps/map_" + str(test_case) + ".jpg")
-    image = image.resize((70, 70), Image.LANCZOS)
+    image = Image.open("./Training_maps/map_" + str(test_case) + ".jpg")
+    image = image.resize((130, 130), Image.LANCZOS)
     image = np.asarray(image)
     if len(image.shape) > 2 :
         image = image[:, :, 0]
@@ -138,7 +138,7 @@ def Boustrophedon_Cellular_Decomposition(test_case) :
         last_cells = current_cells
 
     cells = create_cells(decomposed, total_cells_number)    
-    pickle.dump([decomposed, total_cells_number, cells], open("./Decomposed data/decomposed_" + str(test_case), "wb"))
+    pickle.dump([decomposed, total_cells_number, cells], open("./Decomposed_data/decomposed_" + str(test_case), "wb"))
     
 if __name__ == "__main__" :
     for i in range(100):

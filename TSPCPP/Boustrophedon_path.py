@@ -41,23 +41,11 @@ def Boustrophedon_path(cell, horizontal_direction, vertical_direction, robot_rad
 
         start_point = path[0]
         end_point = path[-1]
-
-        if plot :
-            plt.plot(start_point[0], start_point[1], marker = 'o', color = 'orange', markersize = width + 6.4, zorder = 5)
-
-            for i in range(len(path)) :
-                if i == 0 or abs(path[i][1] - path[i - 1][1]) <= 1 :
-                    plt.plot(path[i][0], path[i][1], marker = 's', color = color, markersize = width, zorder = 2)
-                else :
-                    # test case 1 : width + 1.6
-                    plt.plot([path[i - 1][0], path[i][0]], [path[i - 1][1], path[i][1]], color = color, linewidth = width + 1.6, zorder = 2)
-            
-            plt.plot(end_point[0], end_point[1], marker = 'X', color = 'mediumseagreen', markersize = width + 6.4, zorder = 5)
+        
         flag = False
-        return start_point, end_point, path_length, flag
+        return start_point, end_point, path_length, flag, path
     except:
         print("Exception has been occured.")
-        pass
         flag = True
-        return None, None, None, flag
+        return None, None, None, flag, None
     
