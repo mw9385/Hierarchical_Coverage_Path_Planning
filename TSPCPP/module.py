@@ -32,7 +32,7 @@ class Pointer(nn.Module):
         qk = torch.einsum("ik, ijk -> ij", [q,k]) # qk size = [batch, seq_len]
         qk = self.C * torch.tanh(qk) # qk size = [batch, seq_len]    
         if mask is not None:                    
-            qk = torch.masked_fill(qk, mask==1, -100000.0)
+            qk = torch.masked_fill(qk, mask==1, -1000000.0)
         alpha = torch.softmax(qk, dim = -1)
         return alpha
 # THIS CLASS IS NOT USED!

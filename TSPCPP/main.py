@@ -23,22 +23,22 @@ print("Device status:{}".format(device))
 parser = argparse.ArgumentParser(description="CPP with RL")
 parser.add_argument('--epoch', default= 1000, help="number of epochs")
 parser.add_argument('--steps', default= 100, help="number of epochs")
-parser.add_argument('--batch_size', default=128, help="number of batch size")
+parser.add_argument('--batch_size', default=512, help="number of batch size")
 parser.add_argument('--n_head', default=8, help="number of heads for multi-head attention")
 parser.add_argument('--val_size', default=100, help="number of validation samples") # 이게 굳이 필요한가?
 parser.add_argument('--beta', type=float, default=0.9, help="beta")
 parser.add_argument('--lr', type=float, default=1e-4, help="learning rate")
 parser.add_argument('--n_hidden', default=128, help="nuber of hidden nodes") # 
-parser.add_argument('--log_interval', default=1, help="store model at every epoch")
-parser.add_argument('--eval_interval', default=1, help='update frequency')
-parser.add_argument('--log_dir', default='./log/V2', type=str, help='directory for the tensorboard')
-parser.add_argument('--file_name', default='HCPP_V2', help='file directory')
+parser.add_argument('--log_dir', default='./log/V1', type=str, help='directory for the tensorboard')
+parser.add_argument('--file_name', default='HCPP_V1', help='file directory')
 parser.add_argument('--scaling', type=float, default='130', help='divide the node for scailing')
 parser.add_argument('--max_length', type=float, default='200', help='maximum length to suit the different input length')
-parser.add_argument('--test_file_name', default='test_performance/V2/', help='test_file directory')
+parser.add_argument('--test_file_name', default='test_performance/V1/', help='test_file directory')
+parser.add_argument('--log_interval', default=1, help="store model at every epoch")
+parser.add_argument('--eval_interval', default=1, help='update frequency')
 args = parser.parse_args()
 # save args
-with open('./model/model_V2.txt', 'w') as f:
+with open('./model/model_V1.txt', 'w') as f:
     json.dump(args.__dict__, f, indent=2)
 args = vars(args)
 
@@ -62,8 +62,8 @@ pp.pprint(args)
 # generate training data
 print("---------------------------------------------")
 print("GENERATE DATA")
-train_generator = CPPDataset(map_dir='Decomposed_data/', pnc_dir='Points_and_costs/', transform=None)
-valid_generator = CPPDataset(map_dir='Decomposed_data/', pnc_dir='Points_and_costs/', transform=None)
+train_generator = CPPDataset(map_dir='New_maps/', pnc_dir='Points_and_costs/', transform=None)
+valid_generator = CPPDataset(map_dir='New_maps/', pnc_dir='Points_and_costs/', transform=None)
 train_data_loader = DataLoader(
                     train_generator,
                     batch_size = B,
@@ -89,11 +89,12 @@ optimizer = torch.optim.Adam(high_model.parameters(), lr = learning_rate)
 if __name__=="__main__":
     print("---------------------------------------------")
     print("GENERATE BASELINE")
-    for indicies, sample_batch in zip(range(1), train_data_loader):    
+    for indicies, sample_batch in zip(range(1), train_data_loader):            
         baseline_map = sample_batch[0]
         baseline_num_cells = sample_batch[1]
         baseline_points = sample_batch[2]
         baseline_costs = sample_batch[3]
+        baseline_paths = sample_batch[4]
     # get log_prob and reward
     base_high_log_prob, base_high_reward, _ = high_model(baseline_map, baseline_num_cells, baseline_points, baseline_costs)    
     # define initial moving average
@@ -114,8 +115,10 @@ if __name__=="__main__":
             train_num_cells = sample_batch[1]
             train_points = sample_batch[2]
             train_costs = sample_batch[3]
-            high_log_prob, high_cost, high_action = high_model(train_map, train_num_cells, train_points, train_costs)
-            baseline_high = baseline_high * beta + high_cost * (1.0 - beta)   
+            train_path = sample_batch[4]
+
+            high_log_prob, high_cost, high_action = high_model(train_map, train_num_cells, train_points, train_costs)                 
+            baseline_high = baseline_high[:high_cost.size(0)] * beta + high_cost * (1.0 - beta)   
             # calculate advantage
             high_advantage = high_cost - baseline_high            
             # define loss function     
@@ -139,6 +142,7 @@ if __name__=="__main__":
                     test_num_cells = sample_batch[1]
                     test_points = sample_batch[2]
                     test_costs = sample_batch[3]
+                    test_paths = sample_batch[4]
 
                 _, test_high_cost, test_high_action = high_model(test_map, test_num_cells, test_points, test_costs)
                 test_total_cost = test_high_cost.mean()
@@ -152,7 +156,8 @@ if __name__=="__main__":
                 s_points = test_points[r_idx]            
                 s_action = test_high_action[r_idx]                
                 s_costs = test_high_cost[r_idx]
-                show_paths(s_map, s_num_cells, s_costs, s_points, s_action, global_step)
+                s_paths = test_paths[r_idx]
+                show_paths(s_map, s_num_cells, s_costs, s_points, s_action, s_paths, global_step)
             # tensorboard 설정 
             if steps!=0 and steps % log_interval == 0:
                 print("SAVE MODEL")

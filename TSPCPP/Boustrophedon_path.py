@@ -1,3 +1,4 @@
+import torch
 import numpy as np
 import matplotlib.pyplot as plt
 from Decomposition import Cell
@@ -43,6 +44,7 @@ def Boustrophedon_path(cell, horizontal_direction, vertical_direction, robot_rad
         end_point = path[-1]
         
         flag = False
+        path = torch.FloatTensor(path)
         return start_point, end_point, path_length, flag, path
     except:
         print("Exception has been occured.")
