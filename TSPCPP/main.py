@@ -118,7 +118,7 @@ if __name__=="__main__":
             train_path = sample_batch[4]
 
             high_log_prob, high_cost, high_action = high_model(train_map, train_num_cells, train_points, train_costs)                 
-            baseline_high = baseline_high[:high_cost.size(0)] * beta + high_cost * (1.0 - beta)   
+            baseline_high = baseline_high * beta + high_cost * (1.0 - beta)   
             # calculate advantage
             high_advantage = high_cost - baseline_high            
             # define loss function     
