@@ -24,11 +24,11 @@ def show_paths(image, num_cells, costs, points, action, path, steps):
     for i in range(num_cells):
         # index shows the current input and output index
         index = action[i]
-        p = points[index]
+        p = points[index]        
         internal_path = path[index]
         
-        st = p[0]
-        g = p[1]
+        st = p[0:2]
+        g = p[2:4]
         if i == 0:
             plt.plot(st[0], st[1], marker = 'o', color = 'orange', markersize = width + 6.4, zorder = 5, label='Entrance')            
             plt.plot(g[0], g[1], marker = 'X', color = 'springgreen', markersize = width + 6.4, zorder = 5, label = 'Exit') 

@@ -16,7 +16,7 @@ if __name__ == '__main__' :
         decomposed, total_cells_number, cells = pickle.load(open("./Decomposed_data/decomposed_" + str(test_case), "rb"))
         direction_set = [("LEFT", "DOWN"), ("LEFT", "UP"), ("RIGHT", "DOWN"), ("RIGHT", "UP")]
         # cities (start points, end points)
-        points = np.zeros([4 * total_cells_number, 2, 2]) # 4 * total_cells_number city, start and end, x and y
+        points = np.zeros([4 * total_cells_number, 5]) # 4 * total_cells_number city, start, end, path_length
         intra_path_length = np.zeros([4 * total_cells_number])
         internal_path = np.ones([4 * total_cells_number, 200, 2]) * (-1000.0) 
         # display
@@ -30,16 +30,18 @@ if __name__ == '__main__' :
             for i in range(4) :
                 direction = direction_set[i]
                 # cell의 start point와 end point, 그에 따른 path length를 output으로 받음
-                start_point, end_point, path_length, flag, path = Boustrophedon_path(cells[cell_id], direction[0], direction[1], robot_radius)                                                                        
-                points[4 * (cell_id - 1) + i] = [start_point, end_point]
-                intra_path_length[4 * (cell_id - 1) + i] = path_length                  
+                start_point, end_point, path_length, flag, path = Boustrophedon_path(cells[cell_id], direction[0], direction[1], robot_radius)                                                                                                        
                 if start_point == None or end_point == None or path_length == None:                    
                     none_count +=1  
                 else:
+                    points[4 * (cell_id - 1) + i, 0:2] = start_point
+                    points[4 * (cell_id - 1) + i, 2:4] = end_point
+                    points[4 * (cell_id - 1) + i, 4:] = len(path)
+                    intra_path_length[4 * (cell_id - 1) + i] = path_length  
                     internal_path[4 * (cell_id - 1) + i, :len(path), :] = path
             plt.show()
         
-        # 전체 cell 갯수 중에서 4개 단위로 path length를 cost로 하는 데이터를 생성하면 된다. 
+        # # 전체 cell 갯수 중에서 4개 단위로 path length를 cost로 하는 데이터를 생성하면 된다. 
         if none_count ==0:
             pickle.dump([decomposed, total_cells_number, cells], open('./New_maps/decomposed_' + str(count), 'wb'))
             pickle.dump([points, intra_path_length, internal_path], open("./Points_and_costs/PNC_" + str(count), "wb"))

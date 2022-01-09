@@ -27,11 +27,10 @@ class Encoder(torch.nn.Module):
         self.n_batch = len(batch_data)      
         self.high_node = torch.zeros([self.n_batch, self.max_length, self.n_hidden], dtype=torch.float32).cuda()
         self.original_node = torch.zeros([self.n_batch, self.max_length, self.n_feature], dtype=torch.float32).cuda()
-        self.costs = torch.zeros([self.n_batch, self.max_length], dtype= torch.float32).cuda() * 10000        
+        self.costs = torch.zeros([self.n_batch, self.max_length], dtype= torch.float32).cuda() * 1.0e6
         for index, batch_sample in enumerate(batch_data): 
             # data normalization
-            A,B,C,D = batch_sample.size()
-            batch_sample = batch_sample.reshape([A, B, C * D]).cuda()
+            _,B,_ = batch_sample.size()            
             high_node = self.embedding_x(batch_sample.type(torch.float32).cuda() / self.scaling) 
             high_node = self.high_attention(high_node) # size = [4 * n_cells, n_feature, n_hidden]             
             self.high_node[index, :B, :] = high_node
@@ -68,6 +67,7 @@ class Decoder(torch.nn.Module):
 
     def forward(self, high_node, original_node, map, num_cell, costs):
         self.n_batch = high_node.size(0)
+        self.n_feature = original_node.size(2)
         init_h = None
         h = None
         # do action masking if the element of the inputs are zeros and find the element with zeros
@@ -110,14 +110,14 @@ class Decoder(torch.nn.Module):
                 high_mask = high_mask.scatter(1, I.data, 1).clone()                 
                 I = I.clone() + torch.ones([self.n_batch, 1], dtype=torch.int64).cuda()            
 
+            internal_reward = costs.gather(1, idx.unsqueeze(1))
             if i > 0:                
-                start_pt = original_node.gather(1, st_idx.unsqueeze(1).unsqueeze(2).repeat(1,1,4))
-                end_pt = original_node.gather(1, idx.unsqueeze(1).unsqueeze(2).repeat(1,1,4)) 
-                spt = start_pt[:, :, 2:].squeeze(1)
+                start_pt = original_node.gather(1, st_idx.unsqueeze(1).unsqueeze(2).repeat(1,1,self.n_feature))
+                end_pt = original_node.gather(1, idx.unsqueeze(1).unsqueeze(2).repeat(1,1,self.n_feature)) 
+                spt = start_pt[:, :, 2:4].squeeze(1)
                 ept = end_pt[:, :, :2].squeeze(1) 
                 external_reward = torch.norm(ept - spt, dim=1).unsqueeze(1).cuda() # size = [batch,1]
-                internal_reward = costs.gather(1, st_idx.unsqueeze(1)) + costs.gather(1, idx.unsqueeze(1))                            
-                reward = (external_reward + internal_reward) / 70.0
+                reward = (external_reward + internal_reward) / 130.0
                 # append the reward with zero values when done index is true
                 reward = torch.masked_fill(reward, done_index.unsqueeze(1) == 1, 0).squeeze(1)  
                 cell_reward.append(reward)
@@ -140,9 +140,8 @@ class Decoder(torch.nn.Module):
         cell_reward = torch.stack(cell_reward, dim=1)
         cell_action = torch.stack(cell_action, dim=1)        
         # sum the log_prob and reward
-        cell_log_prob = torch.sum(cell_log_prob, dim=-1)        
-        cell_reward = torch.sum(cell_reward, dim=-1)
-
+        cell_log_prob = torch.sum(cell_log_prob, dim=1)        
+        cell_reward = torch.sum(cell_reward, dim=1)
         return cell_log_prob, cell_reward, cell_action                    
     
     def calculate_mean(self, context_vector):

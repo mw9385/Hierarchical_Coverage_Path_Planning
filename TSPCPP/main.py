@@ -21,29 +21,28 @@ print("Device status:{}".format(device))
 
 # main
 parser = argparse.ArgumentParser(description="CPP with RL")
-parser.add_argument('--epoch', default= 1000, help="number of epochs")
-parser.add_argument('--steps', default= 100, help="number of epochs")
-parser.add_argument('--batch_size', default=512, help="number of batch size")
+parser.add_argument('--epoch', default= 10000, help="number of epochs")
+parser.add_argument('--batch_size', default=128, help="number of batch size")
 parser.add_argument('--n_head', default=8, help="number of heads for multi-head attention")
 parser.add_argument('--val_size', default=100, help="number of validation samples") # 이게 굳이 필요한가?
 parser.add_argument('--beta', type=float, default=0.9, help="beta")
 parser.add_argument('--lr', type=float, default=1e-4, help="learning rate")
 parser.add_argument('--n_hidden', default=128, help="nuber of hidden nodes") # 
-parser.add_argument('--log_dir', default='./log/V1', type=str, help='directory for the tensorboard')
-parser.add_argument('--file_name', default='HCPP_V1', help='file directory')
 parser.add_argument('--scaling', type=float, default='130', help='divide the node for scailing')
 parser.add_argument('--max_length', type=float, default='200', help='maximum length to suit the different input length')
-parser.add_argument('--test_file_name', default='test_performance/V1/', help='test_file directory')
-parser.add_argument('--log_interval', default=1, help="store model at every epoch")
-parser.add_argument('--eval_interval', default=1, help='update frequency')
+
+parser.add_argument('--log_dir', default='./log/V3', type=str, help='directory for the tensorboard')
+parser.add_argument('--file_name', default='HCPP_V3', help='file directory')
+parser.add_argument('--test_file_name', default='test_performance/V3/', help='test_file directory')
+parser.add_argument('--log_interval', default=100, help="store model at every epoch")
+parser.add_argument('--eval_interval', default=100, help='update frequency')
 args = parser.parse_args()
 # save args
-with open('./model/model_V1.txt', 'w') as f:
+with open('./model/model_V3.txt', 'w') as f:
     json.dump(args.__dict__, f, indent=2)
 args = vars(args)
 
 learning_rate = args['lr']
-steps = args['steps']
 B = int(args['batch_size'])
 B_val = int(args['val_size'])
 n_epoch = int(args['epoch'])
@@ -82,7 +81,7 @@ print("FINISHED")
 writer = SummaryWriter(log_dir=args['log_dir'])
 
 # define model
-high_model = HCPP(n_feature = 4, n_hidden= n_hidden, n_embedding= n_hidden, n_head=n_head, C = 10, scaling=scaling, max_length=max_length).cuda()
+high_model = HCPP(n_feature = 5, n_hidden= n_hidden, n_embedding= n_hidden, n_head=n_head, C = 10, scaling=scaling, max_length=max_length).cuda()
 optimizer = torch.optim.Adam(high_model.parameters(), lr = learning_rate)
 
 # visualization of tsp results
@@ -110,7 +109,7 @@ if __name__=="__main__":
     high_model.train()    
 
     for epoch in range(n_epoch):
-        for steps, sample_batch in enumerate(tqdm(train_data_loader)):                
+        for steps, sample_batch in enumerate(tqdm(train_data_loader)):                            
             train_map = sample_batch[0]
             train_num_cells = sample_batch[1]
             train_points = sample_batch[2]
@@ -118,9 +117,10 @@ if __name__=="__main__":
             train_path = sample_batch[4]
 
             high_log_prob, high_cost, high_action = high_model(train_map, train_num_cells, train_points, train_costs)                 
-            baseline_high = baseline_high * beta + high_cost * (1.0 - beta)   
+            baseline_high = baseline_high * beta + high_cost * (1.0 - beta)               
             # calculate advantage
             high_advantage = high_cost - baseline_high            
+
             # define loss function     
             high_loss = (high_advantage * high_log_prob).mean()                                                          
             # set the optimizer zero gradient
@@ -134,7 +134,7 @@ if __name__=="__main__":
             
             # model evaluation
             high_model.eval()            
-            if global_step !=0 and global_step % eval_interval == 0:
+            if global_step % eval_interval == 0:
                 print("MODEL EVALUATION")                              
                 # generate test valid index
                 for indicies, sample_batch in zip(range(1), valid_data_loader):    
@@ -159,7 +159,7 @@ if __name__=="__main__":
                 s_paths = test_paths[r_idx]
                 show_paths(s_map, s_num_cells, s_costs, s_points, s_action, s_paths, global_step)
             # tensorboard 설정 
-            if steps!=0 and steps % log_interval == 0:
+            if global_step % log_interval == 0:
                 print("SAVE MODEL")
                 dir_root = './model/HCPP'
                 param_path = dir_root +  "/" + file_name + ".param"
@@ -175,8 +175,7 @@ if __name__=="__main__":
                 writer.add_scalar("distance", total_cost, global_step= global_step)
 
             global_step +=1
-            high_model.train()            
-
+            high_model.train()                        
     writer.close()   
 
 
