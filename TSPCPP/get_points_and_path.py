@@ -6,7 +6,7 @@ from Boustrophedon_path import *
 from visualization import *
 
 # robot radius value도 중요한데 이걸 어떻게 설정하면 좋을지 잘 모르겠네
-robot_radius = 5
+robot_radius = 1
 display = False
 count = 0
 if __name__ == '__main__' :
@@ -15,8 +15,9 @@ if __name__ == '__main__' :
         Boustrophedon_Cellular_Decomposition(test_case)    
         decomposed, total_cells_number, cells = pickle.load(open("./Decomposed_data/decomposed_" + str(test_case), "rb"))
         direction_set = [("LEFT", "DOWN"), ("LEFT", "UP"), ("RIGHT", "DOWN"), ("RIGHT", "UP")]
+        A, B = np.shape(decomposed)
         # cities (start points, end points)
-        points = np.zeros([4 * total_cells_number, 5]) # 4 * total_cells_number city, start, end, path_length
+        points = np.zeros([4 * total_cells_number, 9]) # 4 * total_cells_number city, start, end, path_length
         intra_path_length = np.zeros([4 * total_cells_number])
         internal_path = np.ones([4 * total_cells_number, 200, 2]) * (-1000.0) 
         # display
@@ -36,12 +37,13 @@ if __name__ == '__main__' :
                 else:
                     points[4 * (cell_id - 1) + i, 0:2] = start_point
                     points[4 * (cell_id - 1) + i, 2:4] = end_point
-                    points[4 * (cell_id - 1) + i, 4:] = len(path)
+                    points[4 * (cell_id - 1) + i, 4] = len(path)
+                    points[4 * (cell_id - 1) + i, 5 + i] = 1 * A # 나중에 130으로 나눠줄꺼라서 일부러 여기서 곱해준다.
                     intra_path_length[4 * (cell_id - 1) + i] = path_length  
                     internal_path[4 * (cell_id - 1) + i, :len(path), :] = path
             plt.show()
         
-        # # 전체 cell 갯수 중에서 4개 단위로 path length를 cost로 하는 데이터를 생성하면 된다. 
+        # 전체 cell 갯수 중에서 4개 단위로 path length를 cost로 하는 데이터를 생성하면 된다. 
         if none_count ==0:
             pickle.dump([decomposed, total_cells_number, cells], open('./New_maps/decomposed_' + str(count), 'wb'))
             pickle.dump([points, intra_path_length, internal_path], open("./Points_and_costs/PNC_" + str(count), "wb"))

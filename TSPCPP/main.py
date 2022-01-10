@@ -30,15 +30,16 @@ parser.add_argument('--lr', type=float, default=1e-4, help="learning rate")
 parser.add_argument('--n_hidden', default=128, help="nuber of hidden nodes") # 
 parser.add_argument('--scaling', type=float, default='130', help='divide the node for scailing')
 parser.add_argument('--max_length', type=float, default='200', help='maximum length to suit the different input length')
+parser.add_argument('--n_feature', type = int, default= 9, help = 'shows the number of feature')
 
-parser.add_argument('--log_dir', default='./log/V3', type=str, help='directory for the tensorboard')
-parser.add_argument('--file_name', default='HCPP_V3', help='file directory')
-parser.add_argument('--test_file_name', default='test_performance/V3/', help='test_file directory')
+parser.add_argument('--log_dir', default='./log/V4', type=str, help='directory for the tensorboard')
+parser.add_argument('--file_name', default='HCPP_V4', help='file directory')
+parser.add_argument('--test_file_name', default='test_performance/V4/', help='test_file directory')
 parser.add_argument('--log_interval', default=100, help="store model at every epoch")
 parser.add_argument('--eval_interval', default=100, help='update frequency')
 args = parser.parse_args()
 # save args
-with open('./model/model_V3.txt', 'w') as f:
+with open('./model/model_V4.txt', 'w') as f:
     json.dump(args.__dict__, f, indent=2)
 args = vars(args)
 
@@ -47,6 +48,7 @@ B = int(args['batch_size'])
 B_val = int(args['val_size'])
 n_epoch = int(args['epoch'])
 n_hidden = int(args['n_hidden'])
+n_feature = int(args['n_feature'])
 n_head = int(args['n_head'])
 log_interval = int(args['log_interval'])
 eval_interval = int(args['eval_interval'])
@@ -81,7 +83,7 @@ print("FINISHED")
 writer = SummaryWriter(log_dir=args['log_dir'])
 
 # define model
-high_model = HCPP(n_feature = 5, n_hidden= n_hidden, n_embedding= n_hidden, n_head=n_head, C = 10, scaling=scaling, max_length=max_length).cuda()
+high_model = HCPP(n_feature = n_feature, n_hidden= n_hidden, n_embedding= n_hidden, n_head=n_head, C = 10, scaling=scaling, max_length=max_length).cuda()
 optimizer = torch.optim.Adam(high_model.parameters(), lr = learning_rate)
 
 # visualization of tsp results
