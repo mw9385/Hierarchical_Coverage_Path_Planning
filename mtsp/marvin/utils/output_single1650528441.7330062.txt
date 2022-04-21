@@ -1,0 +1,31 @@
+NAME : marvin/utils/output1650528441.7330062.atsp.3_1499.tour
+COMMENT : Cost = 3_1499
+COMMENT : Found by LKH-3 [Keld Helsgaun] Thu Apr 21 17:07:28 2022
+TYPE : TOUR
+DIMENSION : 23
+TOUR_SECTION
+1
+13
+3
+10
+21
+16
+7
+5
+20
+4
+6
+19
+17
+2
+15
+23
+9
+11
+12
+22
+8
+14
+18
+-1
+EOF

@@ -1,0 +1,11 @@
+PROBLEM_FILE = marvin/utils/output1649825946.86147.atsp 
+         MOVE_TYPE = 5 
+         RUNS = 1 
+         MTSP_MIN_SIZE = 22 
+         MTSP_MAX_SIZE = 22 
+         SEED = 1 
+         SALESMEN = 2 
+         TIME_LIMIT = 10 
+         MTSP_OBJECTIVE = MINSUM 
+         OUTPUT_TOUR_FILE = marvin/utils/output_single1649825946.86147.txt 
+         MTSP_SOLUTION_FILE = marvin/utils/output1649825946.86147.txt

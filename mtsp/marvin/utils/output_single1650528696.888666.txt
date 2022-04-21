@@ -1,0 +1,56 @@
+NAME : marvin/utils/output1650528696.888666.atsp.1013.tour
+COMMENT : Length = 1013
+COMMENT : Found by LKH-3 [Keld Helsgaun] Thu Apr 21 17:11:45 2022
+TYPE : TOUR
+DIMENSION : 48
+TOUR_SECTION
+1
+14
+4
+17
+11
+7
+6
+12
+32
+40
+22
+21
+31
+8
+15
+9
+48
+34
+44
+10
+46
+23
+30
+35
+41
+16
+2
+45
+13
+28
+36
+38
+47
+25
+24
+27
+3
+19
+42
+43
+33
+5
+18
+26
+20
+37
+39
+29
+-1
+EOF
