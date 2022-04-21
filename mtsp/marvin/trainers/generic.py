@@ -565,7 +565,7 @@ class Trainer:
             # add up the invididual agent cost for the gini coefficient
             agent_costs = sorted(agent_costs)
             for i in range(self.args.num_agents):
-                total_agent_costs[i] += agent_costs[i]
+                total_agent_costs[i] += agent_costs[i].cpu()
 
             data_to_save['paths'][-1].append([-1, -1])
 
